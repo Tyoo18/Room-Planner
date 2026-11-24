@@ -3,6 +3,12 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Box } from "lucide-react";
 import { createWallPaintTexture } from "../utils/wallTexture";
+import {
+  buildFurnitureGroup,
+  clampFurnitureToRoom,
+  snapFurniturePosition,
+  getFurnitureWorldAABB,
+} from "../utils/furnitureGeometry";
 import { TRANSLATIONS } from "../utils/i18n";
 
 function remapInnerFaceUV(geometry, u0, u1, v0, v1) {
@@ -17,11 +23,39 @@ function remapInnerFaceUV(geometry, u0, u1, v0, v1) {
   uvAttr.needsUpdate = true;
 }
 
+function disposeGroupChildren(group) {
+  while (group.children.length > 0) {
+    const child = group.children[0];
+    child.traverse((obj) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach((m) => {
+            if (m.map) m.map.dispose();
+            m.dispose();
+          });
+        } else {
+          if (obj.material.map) obj.material.map.dispose();
+          obj.material.dispose();
+        }
+      }
+    });
+    group.remove(child);
+  }
+}
+
 export default function RoomViewport({
   isRoomCreated,
   room,
   walls,
   door,
+  furnitures,
+  selectedFurnitureId,
+  conflictIds,
+  onSelectFurniture,
+  onMoveFurniture,
+  snapEnabled = true,
+  viewMode = "3d",
   autoHideWalls,
   cameraCommand,
   onCameraManualMove,
@@ -33,27 +67,46 @@ export default function RoomViewport({
 
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
-  const cameraRef = useRef(null);
+  const perspCameraRef = useRef(null);
+  const orthoCameraRef = useRef(null);
+  const activeCameraRef = useRef(null);
   const controlsRef = useRef(null);
   const roomGroupRef = useRef(null);
+  const furnitureGroupRef = useRef(null);
+  const guideGroupRef = useRef(null);
   const gridHelperRef = useRef(null);
   const hemiLightRef = useRef(null);
   const wallGroupsRef = useRef({});
-  const autoHideRef = useRef(autoHideWalls);
-  const onManualMoveRef = useRef(onCameraManualMove);
 
-  const latestDataRef = useRef({ isRoomCreated, room, door });
+  const autoHideRef = useRef(autoHideWalls);
+  const viewModeRef = useRef(viewMode);
+  const snapEnabledRef = useRef(snapEnabled);
+  const onManualMoveRef = useRef(onCameraManualMove);
+  const onSelectFurnRef = useRef(onSelectFurniture);
+  const onMoveFurnRef = useRef(onMoveFurniture);
+
+  const latestDataRef = useRef({ isRoomCreated, room, door, furnitures });
   useEffect(() => {
-    latestDataRef.current = { isRoomCreated, room, door };
-  }, [isRoomCreated, room, door]);
+    latestDataRef.current = { isRoomCreated, room, door, furnitures };
+  }, [isRoomCreated, room, door, furnitures]);
 
   useEffect(() => {
     autoHideRef.current = autoHideWalls;
   }, [autoHideWalls]);
 
   useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
+
+  useEffect(() => {
+    snapEnabledRef.current = snapEnabled;
+  }, [snapEnabled]);
+
+  useEffect(() => {
     onManualMoveRef.current = onCameraManualMove;
-  }, [onCameraManualMove]);
+    onSelectFurnRef.current = onSelectFurniture;
+    onMoveFurnRef.current = onMoveFurniture;
+  }, [onCameraManualMove, onSelectFurniture, onMoveFurniture]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -63,14 +116,26 @@ export default function RoomViewport({
     scene.background = new THREE.Color("#eef0f3");
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(
-      48,
-      container.clientWidth / container.clientHeight,
-      0.05,
-      100,
+    const aspect = container.clientWidth / container.clientHeight;
+    const perspCamera = new THREE.PerspectiveCamera(48, aspect, 0.05, 100);
+    perspCamera.position.set(4.5, 4.2, 5.2);
+    perspCameraRef.current = perspCamera;
+
+    const frustumHalf = 3.2;
+    const orthoCamera = new THREE.OrthographicCamera(
+      -frustumHalf * aspect,
+      frustumHalf * aspect,
+      frustumHalf,
+      -frustumHalf,
+      0.1,
+      50,
     );
-    camera.position.set(4.5, 4.2, 5.2);
-    cameraRef.current = camera;
+    orthoCamera.position.set(0, 10, 0);
+    orthoCamera.up.set(0, 0, -1);
+    orthoCamera.lookAt(0, 0, 0);
+    orthoCameraRef.current = orthoCamera;
+
+    activeCameraRef.current = perspCamera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -112,7 +177,15 @@ export default function RoomViewport({
     scene.add(roomGroup);
     roomGroupRef.current = roomGroup;
 
-    const controls = new OrbitControls(camera, renderer.domElement);
+    const furnitureGroup = new THREE.Group();
+    scene.add(furnitureGroup);
+    furnitureGroupRef.current = furnitureGroup;
+
+    const guideGroup = new THREE.Group();
+    scene.add(guideGroup);
+    guideGroupRef.current = guideGroup;
+
+    const controls = new OrbitControls(perspCamera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.07;
     controls.target.set(0, 1.1, 0);
@@ -129,10 +202,162 @@ export default function RoomViewport({
     };
     controls.addEventListener("start", handleControlStart);
 
+    const raycaster = new THREE.Raycaster();
+    const pointerNdc = new THREE.Vector2();
+    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const planeHit = new THREE.Vector3();
+
+    let draggingId = null;
+    let dragOffset = { x: 0, z: 0 };
+    let pointerDownPos = { x: 0, y: 0 };
+    let didPointerMove = false;
+
+    const getNdcFromEvent = (e) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointerNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    };
+
+    const findFurnitureIdFromHit = (object) => {
+      let curr = object;
+      while (curr) {
+        if (curr.userData && curr.userData.furnitureId) {
+          return curr.userData.furnitureId;
+        }
+        curr = curr.parent;
+      }
+      return null;
+    };
+
+    const handlePointerDown = (e) => {
+      if (e.button !== 0 || !latestDataRef.current.isRoomCreated) return;
+      pointerDownPos = { x: e.clientX, y: e.clientY };
+      didPointerMove = false;
+
+      getNdcFromEvent(e);
+      raycaster.setFromCamera(pointerNdc, activeCameraRef.current);
+
+      const hits = raycaster.intersectObjects(furnitureGroup.children, true);
+      if (hits.length > 0) {
+        const hitId = findFurnitureIdFromHit(hits[0].object);
+        const item = latestDataRef.current.furnitures.find(
+          (f) => f.id === hitId,
+        );
+        if (item) {
+          if (onSelectFurnRef.current) {
+            onSelectFurnRef.current(item.id);
+          }
+          // Hanya mulai drag jika furnitur TIDAK dikunci
+          if (
+            !item.locked &&
+            raycaster.ray.intersectPlane(floorPlane, planeHit)
+          ) {
+            draggingId = item.id;
+            dragOffset = {
+              x: item.x / 100 - planeHit.x,
+              z: item.z / 100 - planeHit.z,
+            };
+            controls.enabled = false;
+            renderer.domElement.style.cursor = "grabbing";
+          }
+        }
+      }
+    };
+
+    const handlePointerMove = (e) => {
+      const dist = Math.hypot(
+        e.clientX - pointerDownPos.x,
+        e.clientY - pointerDownPos.y,
+      );
+      if (dist > 4) didPointerMove = true;
+
+      if (!draggingId) {
+        if (!latestDataRef.current.isRoomCreated) return;
+        getNdcFromEvent(e);
+        raycaster.setFromCamera(pointerNdc, activeCameraRef.current);
+        const hoverHits = raycaster.intersectObjects(
+          furnitureGroup.children,
+          true,
+        );
+        if (hoverHits.length > 0) {
+          const hId = findFurnitureIdFromHit(hoverHits[0].object);
+          const hItem = latestDataRef.current.furnitures.find(
+            (f) => f.id === hId,
+          );
+          renderer.domElement.style.cursor = hItem?.locked
+            ? "not-allowed"
+            : "grab";
+        } else {
+          renderer.domElement.style.cursor = "auto";
+        }
+        return;
+      }
+
+      getNdcFromEvent(e);
+      raycaster.setFromCamera(pointerNdc, activeCameraRef.current);
+
+      if (raycaster.ray.intersectPlane(floorPlane, planeHit)) {
+        const { room: r, furnitures: list } = latestDataRef.current;
+        const item = list.find((f) => f.id === draggingId);
+        if (!item || item.locked) return;
+
+        const snapStep = e.shiftKey ? 5 : 1;
+        const rawX =
+          Math.round(((planeHit.x + dragOffset.x) * 100) / snapStep) * snapStep;
+        const rawZ =
+          Math.round(((planeHit.z + dragOffset.z) * 100) / snapStep) * snapStep;
+
+        const candidate = { ...item, x: rawX, z: rawZ };
+        const finalPos =
+          snapEnabledRef.current && !e.altKey
+            ? snapFurniturePosition(candidate, list, r.width, r.length, 8)
+            : clampFurnitureToRoom(candidate, r.width, r.length);
+
+        if (onMoveFurnRef.current) {
+          onMoveFurnRef.current(draggingId, finalPos.x, finalPos.z);
+        }
+      }
+    };
+
+    const handlePointerUp = () => {
+      if (draggingId) {
+        draggingId = null;
+        controls.enabled = true;
+        renderer.domElement.style.cursor = "auto";
+        return;
+      }
+
+      if (
+        !didPointerMove &&
+        latestDataRef.current.isRoomCreated &&
+        onSelectFurnRef.current
+      ) {
+        onSelectFurnRef.current(null);
+      }
+    };
+
+    const domEl = renderer.domElement;
+    domEl.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+
     const resizeObserver = new ResizeObserver(() => {
-      if (!container) return;
-      camera.aspect = container.clientWidth / container.clientHeight;
-      camera.updateProjectionMatrix();
+      if (
+        !container ||
+        container.clientWidth === 0 ||
+        container.clientHeight === 0
+      )
+        return;
+      const nextAspect = container.clientWidth / container.clientHeight;
+
+      perspCamera.aspect = nextAspect;
+      perspCamera.updateProjectionMatrix();
+
+      const halfH = (orthoCamera.top - orthoCamera.bottom) / 2;
+      orthoCamera.left = -halfH * nextAspect;
+      orthoCamera.right = halfH * nextAspect;
+      orthoCamera.updateProjectionMatrix();
+
       renderer.setSize(container.clientWidth, container.clientHeight);
     });
     resizeObserver.observe(container);
@@ -146,33 +371,79 @@ export default function RoomViewport({
       animId = requestAnimationFrame(animate);
       controls.update();
 
+      const is2D = viewModeRef.current === "2d";
       const wallMap = wallGroupsRef.current;
+
       Object.values(wallMap).forEach((wg) => {
-        if (!autoHideRef.current) {
+        if (is2D || !autoHideRef.current) {
           wg.visible = true;
           return;
         }
         wg.getWorldPosition(wallWorldPos);
         wallNormal.set(0, 0, 1).applyQuaternion(wg.quaternion);
-        toCamera.subVectors(camera.position, wallWorldPos);
+        toCamera.subVectors(perspCamera.position, wallWorldPos);
         wg.visible = wallNormal.dot(toCamera) > -0.05;
       });
 
-      renderer.render(scene, camera);
+      renderer.render(scene, activeCameraRef.current);
     };
     animate();
 
     return () => {
       cancelAnimationFrame(animId);
+      domEl.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
       controls.removeEventListener("start", handleControlStart);
       resizeObserver.disconnect();
       controls.dispose();
       renderer.dispose();
-      if (renderer.domElement && container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
+      if (domEl && container.contains(domEl)) {
+        container.removeChild(domEl);
       }
     };
   }, []);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    const perspCamera = perspCameraRef.current;
+    const orthoCamera = orthoCameraRef.current;
+    const container = containerRef.current;
+    if (!controls || !perspCamera || !orthoCamera || !container) return;
+
+    const { room: r } = latestDataRef.current;
+    const maxSpanM = Math.max(r.width, r.length) / 100;
+
+    if (viewMode === "2d") {
+      const aspect = Math.max(
+        0.5,
+        container.clientWidth / Math.max(1, container.clientHeight),
+      );
+      const halfH = Math.max(1.8, maxSpanM * 0.72);
+      orthoCamera.left = -halfH * aspect;
+      orthoCamera.right = halfH * aspect;
+      orthoCamera.top = halfH;
+      orthoCamera.bottom = -halfH;
+      orthoCamera.zoom = 1;
+      orthoCamera.position.set(0, 12, 0);
+      orthoCamera.up.set(0, 0, -1);
+      orthoCamera.lookAt(0, 0, 0);
+      orthoCamera.updateProjectionMatrix();
+
+      activeCameraRef.current = orthoCamera;
+      controls.object = orthoCamera;
+      controls.target.set(0, 0, 0);
+      controls.enableRotate = false;
+      controls.minZoom = 0.4;
+      controls.maxZoom = 5;
+      controls.update();
+    } else {
+      activeCameraRef.current = perspCamera;
+      controls.object = perspCamera;
+      controls.enableRotate = true;
+      controls.update();
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -207,25 +478,7 @@ export default function RoomViewport({
     const roomGroup = roomGroupRef.current;
     if (!roomGroup) return;
 
-    while (roomGroup.children.length > 0) {
-      const child = roomGroup.children[0];
-      child.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) {
-          if (Array.isArray(obj.material)) {
-            obj.material.forEach((m) => {
-              if (m.map) m.map.dispose();
-              m.dispose();
-            });
-          } else {
-            if (obj.material.map) obj.material.map.dispose();
-            obj.material.dispose();
-          }
-        }
-      });
-      roomGroup.remove(child);
-    }
-
+    disposeGroupChildren(roomGroup);
     wallGroupsRef.current = {};
 
     if (!isRoomCreated) return;
@@ -263,13 +516,7 @@ export default function RoomViewport({
         pos: [0, 0, L / 2],
         rotY: Math.PI,
       },
-      {
-        id: "back",
-        innerWidth: W,
-        cornerExt: T,
-        pos: [0, 0, -L / 2],
-        rotY: 0,
-      },
+      { id: "back", innerWidth: W, cornerExt: T, pos: [0, 0, -L / 2], rotY: 0 },
       {
         id: "left",
         innerWidth: L,
@@ -299,7 +546,6 @@ export default function RoomViewport({
         roughness: 0.92,
         metalness: 0.0,
       });
-      // Samakan semua sisi luar & pinggiran tembok agar sudut luar tidak belang
       const outerPlasterMat = new THREE.MeshStandardMaterial({
         color: "#cbd5e1",
         roughness: 0.95,
@@ -351,7 +597,6 @@ export default function RoomViewport({
         addWallBlock(doorLocalRight, wRight, 0, H);
         addWallBlock(doorLocalLeft, doorLocalRight, dH, H);
 
-        // Kusen
         const frameMat = new THREE.MeshStandardMaterial({
           color: "#78553a",
           roughness: 0.7,
@@ -384,7 +629,6 @@ export default function RoomViewport({
         );
         wg.add(topJamb);
 
-        // Daun Pintu
         const leafWidth = dW - frameThick * 2;
         const leafHeight = dH - frameThick;
         const leafThick = 0.04;
@@ -436,7 +680,6 @@ export default function RoomViewport({
         }
         wg.add(hingeGroup);
 
-        // Garis lengkung ayunan pintu
         const swingRadius = leafWidth;
         const arcPoints = [];
         const segments = 24;
@@ -482,12 +725,66 @@ export default function RoomViewport({
   }, [isRoomCreated, room, walls, door]);
 
   useEffect(() => {
-    if (!cameraCommand || !cameraRef.current || !controlsRef.current) return;
+    const fGroup = furnitureGroupRef.current;
+    const gGroup = guideGroupRef.current;
+    if (!fGroup || !gGroup) return;
+
+    disposeGroupChildren(fGroup);
+    disposeGroupChildren(gGroup);
+
+    if (!isRoomCreated) return;
+
+    furnitures.forEach((item) => {
+      const isSelected = item.id === selectedFurnitureId;
+      const hasConflict = conflictIds.has(item.id);
+      const meshGroup = buildFurnitureGroup(item, { isSelected, hasConflict });
+      fGroup.add(meshGroup);
+    });
+
+    const selectedItem = furnitures.find((f) => f.id === selectedFurnitureId);
+    if (selectedItem) {
+      const W = room.width / 100;
+      const L = room.length / 100;
+      const { minX, maxX, minZ, maxZ } = getFurnitureWorldAABB(selectedItem);
+      const midX = (minX + maxX) / 2;
+      const midZ = (minZ + maxZ) / 2;
+      const y = 0.007;
+
+      const points = [
+        new THREE.Vector3(minX, y, midZ),
+        new THREE.Vector3(-W / 2, y, midZ),
+        new THREE.Vector3(maxX, y, midZ),
+        new THREE.Vector3(W / 2, y, midZ),
+        new THREE.Vector3(midX, y, minZ),
+        new THREE.Vector3(midX, y, -L / 2),
+        new THREE.Vector3(midX, y, maxZ),
+        new THREE.Vector3(midX, y, L / 2),
+      ];
+
+      const guideColor = conflictIds.has(selectedItem.id)
+        ? "#ef4444"
+        : selectedItem.locked
+          ? "#f59e0b"
+          : "#2563eb";
+
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const lineMat = new THREE.LineBasicMaterial({
+        color: guideColor,
+        transparent: true,
+        opacity: 0.75,
+      });
+      gGroup.add(new THREE.LineSegments(lineGeo, lineMat));
+    }
+  }, [isRoomCreated, room, furnitures, selectedFurnitureId, conflictIds]);
+
+  useEffect(() => {
+    if (!cameraCommand || !perspCameraRef.current || !controlsRef.current)
+      return;
 
     const { isRoomCreated: created, room: r, door: d } = latestDataRef.current;
     if (!created) return;
 
-    const camera = cameraRef.current;
+    const camera = perspCameraRef.current;
     const controls = controlsRef.current;
     const W = r.width / 100;
     const L = r.length / 100;
@@ -569,12 +866,7 @@ export default function RoomViewport({
               : "border-zinc-200/80 bg-white/85 text-zinc-600"
           }`}
         >
-          <span
-            className={`font-semibold ${isDark ? "text-zinc-100" : "text-zinc-800"}`}
-          >
-            {t.controlsHintTitle}
-          </span>{" "}
-          {t.controlsHintBody}
+          {viewMode === "2d" ? t.controlsHint2D : t.controlsHint3D}
         </div>
       )}
     </div>
