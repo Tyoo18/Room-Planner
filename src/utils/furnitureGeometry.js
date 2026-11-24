@@ -35,7 +35,8 @@ export function createDefaultFurniture(type, variant = {}) {
       height: 75,
       deskShape,
       lCorner: "left",
-      armDepth: 55,
+      mainDepth: 60,
+      sideWidth: 45,
       color1: "#D6B892",
       color2: "#27272A",
     };
@@ -53,10 +54,10 @@ export function createDefaultFurniture(type, variant = {}) {
       width: 100,
       depth: 50,
       height: 180,
-      wardrobeLayout: "vertical", // 'vertical' | 'grid'
+      wardrobeLayout: "vertical",
       doorCount: 2,
       wardrobeCols: 2,
-      wardrobeRows: 3, // default grid 2x3 = 6 pintu
+      wardrobeRows: 3,
       wardrobeDoorType,
       color1: "#E2E8F0",
       color2: "#94A3B8",
@@ -80,19 +81,36 @@ export function createDefaultFurniture(type, variant = {}) {
   };
 }
 
+export function getLDeskDimensionsM(item) {
+  const w = item.width / 100;
+  const d = item.depth / 100;
+  const legacyArm = item.armDepth || 55;
+  const mainDepthM = Math.min(
+    (item.mainDepth || legacyArm) / 100,
+    Math.max(0.2, d - 0.15),
+  );
+  const sideWidthM = Math.min(
+    (item.sideWidth || legacyArm) / 100,
+    Math.max(0.2, w - 0.15),
+  );
+  return { w, d, mainDepthM, sideWidthM };
+}
+
 export function getFurnitureLocalBoxes(item) {
   const w = item.width / 100;
   const d = item.depth / 100;
 
   if (item.type === "desk" && item.deskShape === "l-shape") {
-    const arm = Math.min((item.armDepth || 55) / 100, w * 0.85, d * 0.85);
-    const wingDepth = Math.max(0.05, d - arm);
+    const { mainDepthM, sideWidthM } = getLDeskDimensionsM(item);
+    const wingDepth = Math.max(0.05, d - mainDepthM);
     const wingCenterX =
-      item.lCorner === "right" ? w / 2 - arm / 2 : -w / 2 + arm / 2;
+      item.lCorner === "right"
+        ? w / 2 - sideWidthM / 2
+        : -w / 2 + sideWidthM / 2;
 
     return [
-      { cx: 0, cz: -d / 2 + arm / 2, w, d: arm },
-      { cx: wingCenterX, cz: arm / 2, w: arm, d: wingDepth },
+      { cx: 0, cz: -d / 2 + mainDepthM / 2, w, d: mainDepthM },
+      { cx: wingCenterX, cz: mainDepthM / 2, w: sideWidthM, d: wingDepth },
     ];
   }
 
@@ -136,9 +154,6 @@ export function clampFurnitureToRoom(item, roomWidthCm, roomLengthCm) {
   return { ...item, x: nextX, z: nextZ };
 }
 
-/**
- * Magnetic Snap ke tembok kamar & sisi furnitur lain dalam radius thresholdCm (default 8 cm).
- */
 export function snapFurniturePosition(
   candidateItem,
   allFurnitures,
@@ -154,14 +169,8 @@ export function snapFurniturePosition(
   const halfW = (maxX - minX) / 2;
   const halfD = (maxZ - minZ) / 2;
 
-  const xTargets = [
-    -roomWidthCm / 2 + halfW, // Mepet tembok kiri
-    roomWidthCm / 2 - halfW, // Mepet tembok kanan
-  ];
-  const zTargets = [
-    -roomLengthCm / 2 + halfD, // Mepet tembok belakang
-    roomLengthCm / 2 - halfD, // Mepet tembok depan
-  ];
+  const xTargets = [-roomWidthCm / 2 + halfW, roomWidthCm / 2 - halfW];
+  const zTargets = [-roomLengthCm / 2 + halfD, roomLengthCm / 2 - halfD];
 
   allFurnitures.forEach((other) => {
     if (other.id === candidateItem.id) return;
@@ -171,20 +180,18 @@ export function snapFurniturePosition(
     const oMinZ = o.minZ * 100;
     const oMaxZ = o.maxZ * 100;
 
-    // Snap horizontal (X) jika sejajar atau berdekatan secara Z
     if (maxZ + 35 >= oMinZ && minZ - 35 <= oMaxZ) {
-      xTargets.push(oMaxX + halfW); // Nempel di kanan objek lain
-      xTargets.push(oMinX - halfW); // Nempel di kiri objek lain
-      xTargets.push(oMinX + halfW); // Rata sisi kiri
-      xTargets.push(oMaxX - halfW); // Rata sisi kanan
+      xTargets.push(oMaxX + halfW);
+      xTargets.push(oMinX - halfW);
+      xTargets.push(oMinX + halfW);
+      xTargets.push(oMaxX - halfW);
     }
 
-    // Snap vertikal (Z) jika sejajar atau berdekatan secara X
     if (maxX + 35 >= oMinX && minX - 35 <= oMaxX) {
-      zTargets.push(oMaxZ + halfD); // Nempel di depan objek lain
-      zTargets.push(oMinZ - halfD); // Nempel di belakang objek lain
-      zTargets.push(oMinZ + halfD); // Rata sisi belakang
-      zTargets.push(oMaxZ - halfD); // Rata sisi depan
+      zTargets.push(oMaxZ + halfD);
+      zTargets.push(oMinZ - halfD);
+      zTargets.push(oMinZ + halfD);
+      zTargets.push(oMaxZ - halfD);
     }
   });
 
@@ -344,6 +351,51 @@ export function checkFurnitureConflicts(
   return { hasOverlap, hasDoorBlock };
 }
 
+/**
+ * Helper membuat Box dengan pojok membulat & tepi bevel halus (dimensi akhir presisi W x H x D, centered di 0,0,0)
+ */
+function createRoundedBoxGeometry(
+  width,
+  height,
+  depth,
+  cornerRadius = 0.05,
+  bevelSize = 0.02,
+  bevelThickness = 0.02,
+) {
+  const bSize = Math.min(bevelSize, width * 0.18, depth * 0.18);
+  const bThick = Math.min(bevelThickness, height * 0.25);
+  const hw = Math.max(0.01, width / 2 - bSize);
+  const hd = Math.max(0.01, depth / 2 - bSize);
+  const r = Math.max(0.004, Math.min(cornerRadius - bSize, hw * 0.9, hd * 0.9));
+
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw + r, -hd);
+  shape.lineTo(hw - r, -hd);
+  shape.absarc(hw - r, -hd + r, r, -Math.PI / 2, 0, false);
+  shape.lineTo(hw, hd - r);
+  shape.absarc(hw - r, hd - r, r, 0, Math.PI / 2, false);
+  shape.lineTo(-hw + r, hd);
+  shape.absarc(-hw + r, hd - r, r, Math.PI / 2, Math.PI, false);
+  shape.lineTo(-hw, -hd + r);
+  shape.absarc(-hw + r, -hd + r, r, Math.PI, Math.PI * 1.5, false);
+
+  const extrudeDepth = Math.max(0.01, height - bThick * 2);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: extrudeDepth,
+    bevelEnabled: true,
+    bevelSegments: 3,
+    steps: 1,
+    bevelSize: bSize,
+    bevelThickness: bThick,
+    curveSegments: 6,
+  });
+
+  geo.center();
+  geo.rotateX(-Math.PI / 2);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function addPart(group, geo, mat, x, y, z, castShadow = true) {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(x, y, z);
@@ -384,7 +436,7 @@ export function buildFurnitureGroup(
     if (!isFloor) {
       addPart(
         group,
-        new THREE.BoxGeometry(W, baseH, D),
+        createRoundedBoxGeometry(W, baseH, D, 0.025, 0.008, 0.008),
         matSecondary,
         0,
         baseH / 2,
@@ -394,7 +446,7 @@ export function buildFurnitureGroup(
       const hbThick = 0.06;
       addPart(
         group,
-        new THREE.BoxGeometry(W, hbH, hbThick),
+        createRoundedBoxGeometry(W, hbH, hbThick, 0.025, 0.008, 0.008),
         matSecondary,
         0,
         hbH / 2,
@@ -402,56 +454,46 @@ export function buildFurnitureGroup(
       );
     }
 
+    // Kasur dengan sudut membulat lembut
     const matW = isFloor ? W : Math.max(0.2, W - 0.04);
     const matD = isFloor ? D : Math.max(0.2, D - 0.08);
     const matZ = isFloor ? 0 : 0.02;
-    addPart(
-      group,
-      new THREE.BoxGeometry(matW, mattressH, matD),
-      matPrimary,
-      0,
-      baseH + mattressH / 2,
-      matZ,
+    const mattressGeo = createRoundedBoxGeometry(
+      matW,
+      mattressH,
+      matD,
+      0.065,
+      0.022,
+      0.022,
     );
+    addPart(group, mattressGeo, matPrimary, 0, baseH + mattressH / 2, matZ);
 
+    // Bantal rounded empuk
     const pillowMat = new THREE.MeshStandardMaterial({
       color: "#ffffff",
-      roughness: 0.85,
+      roughness: 0.88,
     });
     const pillowCount = W >= 1.1 ? 2 : 1;
-    const pillowW = Math.min(0.55, (matW - 0.16) / pillowCount);
-    const pillowD = Math.min(0.35, matD * 0.22);
-    const pillowH = 0.07;
-    const pillowY = baseH + mattressH + pillowH / 2;
-    const pillowZ = -matD / 2 + pillowD / 2 + 0.08 + matZ;
+    const pillowW = Math.min(0.56, (matW - 0.16) / pillowCount);
+    const pillowD = Math.min(0.36, matD * 0.22);
+    const pillowH = 0.08;
+    const pillowY = baseH + mattressH + pillowH / 2 - 0.008;
+    const pillowZ = -matD / 2 + pillowD / 2 + 0.09 + matZ;
+    const pillowGeo = createRoundedBoxGeometry(
+      pillowW,
+      pillowH,
+      pillowD,
+      0.055,
+      0.024,
+      0.024,
+    );
 
     if (pillowCount === 1) {
-      addPart(
-        group,
-        new THREE.BoxGeometry(pillowW, pillowH, pillowD),
-        pillowMat,
-        0,
-        pillowY,
-        pillowZ,
-      );
+      addPart(group, pillowGeo, pillowMat, 0, pillowY, pillowZ);
     } else {
       const gap = pillowW * 0.58;
-      addPart(
-        group,
-        new THREE.BoxGeometry(pillowW, pillowH, pillowD),
-        pillowMat,
-        -gap,
-        pillowY,
-        pillowZ,
-      );
-      addPart(
-        group,
-        new THREE.BoxGeometry(pillowW, pillowH, pillowD),
-        pillowMat,
-        gap,
-        pillowY,
-        pillowZ,
-      );
+      addPart(group, pillowGeo, pillowMat, -gap, pillowY, pillowZ);
+      addPart(group, pillowGeo.clone(), pillowMat, gap, pillowY, pillowZ);
     }
   } else if (item.type === "desk") {
     const topThick = 0.035;
@@ -502,22 +544,22 @@ export function buildFurnitureGroup(
         );
       });
 
-      const arm = Math.min((item.armDepth || 55) / 100, W * 0.85, D * 0.85);
+      const { mainDepthM, sideWidthM } = getLDeskDimensionsM(item);
       const legCoords =
         item.lCorner === "right"
           ? [
               [-W / 2 + legThick, -D / 2 + legThick],
-              [-W / 2 + legThick, -D / 2 + arm - legThick],
+              [-W / 2 + legThick, -D / 2 + mainDepthM - legThick],
               [W / 2 - legThick, -D / 2 + legThick],
-              [W / 2 - arm + legThick, D / 2 - legThick],
+              [W / 2 - sideWidthM + legThick, D / 2 - legThick],
               [W / 2 - legThick, D / 2 - legThick],
             ]
           : [
               [-W / 2 + legThick, -D / 2 + legThick],
               [W / 2 - legThick, -D / 2 + legThick],
-              [W / 2 - legThick, -D / 2 + arm - legThick],
+              [W / 2 - legThick, -D / 2 + mainDepthM - legThick],
               [-W / 2 + legThick, D / 2 - legThick],
-              [-W / 2 + arm - legThick, D / 2 - legThick],
+              [-W / 2 + sideWidthM - legThick, D / 2 - legThick],
             ];
 
       legCoords.forEach(([lx, lz]) => {
@@ -625,7 +667,6 @@ export function buildFurnitureGroup(
       }
     }
 
-    // Zona clearance lantai jika mekanisme pintu buka biasa (swing)
     if (item.wardrobeDoorType !== "sliding") {
       const swingDepth = Math.min(0.65, totalLeafW);
       for (let c = 0; c < cols; c++) {
@@ -759,7 +800,6 @@ export function buildFurnitureGroup(
     }
   }
 
-  // Garis seleksi (Biru = Normal, Kuning/Amber = Terkunci, Merah = Tabrakan)
   if (isSelected || hasConflict) {
     const boxes = getFurnitureLocalBoxes(item);
     const outlineColor = hasConflict

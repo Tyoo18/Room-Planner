@@ -20,6 +20,11 @@ import {
   Magnet,
   Lock,
   Unlock,
+  Undo2,
+  Redo2,
+  FolderOpen,
+  Pencil,
+  Check,
 } from "lucide-react";
 import ColorPicker from "./ColorPicker";
 import { getWallDistancesCm } from "../utils/furnitureGeometry";
@@ -33,6 +38,18 @@ const BED_SIZE_PRESETS = [
 ];
 
 export default function ControlPanel({
+  slots = [],
+  activeSlotId,
+  onSelectSlot,
+  onDuplicateSlot,
+  onCreateNewSlot,
+  onRenameSlot,
+  onDeleteSlot,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
+  onRecordHistorySnapshot,
   isRoomCreated,
   room,
   setRoom,
@@ -83,8 +100,12 @@ export default function ControlPanel({
     width: "",
     depth: "",
     height: "",
-    armDepth: "",
+    mainDepth: "",
+    sideWidth: "",
   });
+
+  const [isRenamingSlot, setIsRenamingSlot] = useState(false);
+  const [slotNameDraft, setSlotNameDraft] = useState("");
 
   const [dimErrorKey, setDimErrorKey] = useState("");
   const [confirmResetAll, setConfirmResetAll] = useState(false);
@@ -92,28 +113,47 @@ export default function ControlPanel({
 
   const paintSectionRef = useRef(null);
 
+  const activeSlot = slots.find((s) => s.id === activeSlotId) || slots[0];
+
+  // Sinkronkan input form kamar & pintu saat berganti slot layout atau reset
   useEffect(() => {
+    setIsRenamingSlot(false);
+    setDimErrorKey("");
     if (!isRoomCreated) {
       setDimInputs({ p: "", l: "", t: "" });
       setThicknessInput("15");
       setDoorInputs({ width: "80", height: "210" });
-      setDimErrorKey("");
+    } else {
+      setDimInputs({
+        p: String(room.p),
+        l: String(room.l),
+        t: String(room.t),
+      });
+      setThicknessInput(String(room.thickness));
+      setDoorInputs({
+        width: String(door.width),
+        height: String(door.height),
+      });
     }
-  }, [isRoomCreated]);
+  }, [activeSlotId, isRoomCreated]);
 
   useEffect(() => {
     if (!selectedFurniture) return;
+    const legacyArm = selectedFurniture.armDepth || 55;
     setFurnInputs({
       width: String(selectedFurniture.width),
       depth: String(selectedFurniture.depth),
       height: String(selectedFurniture.height),
-      armDepth: String(selectedFurniture.armDepth || 55),
+      mainDepth: String(selectedFurniture.mainDepth || legacyArm),
+      sideWidth: String(selectedFurniture.sideWidth || legacyArm),
     });
   }, [
     selectedFurniture?.id,
     selectedFurniture?.width,
     selectedFurniture?.depth,
     selectedFurniture?.height,
+    selectedFurniture?.mainDepth,
+    selectedFurniture?.sideWidth,
     selectedFurniture?.armDepth,
   ]);
 
@@ -244,13 +284,23 @@ export default function ControlPanel({
 
     const numVal = Number(cleaned);
     if (field === "width" && numVal >= 20 && numVal <= frontWidthCm) {
-      onUpdateFurniture(selectedFurniture.id, { width: numVal });
+      onUpdateFurniture(selectedFurniture.id, { width: numVal }, false);
     } else if (field === "depth" && numVal >= 20 && numVal <= sideLengthCm) {
-      onUpdateFurniture(selectedFurniture.id, { depth: numVal });
+      onUpdateFurniture(selectedFurniture.id, { depth: numVal }, false);
     } else if (field === "height" && numVal >= 10 && numVal <= room.t) {
-      onUpdateFurniture(selectedFurniture.id, { height: numVal });
-    } else if (field === "armDepth" && numVal >= 30 && numVal <= 120) {
-      onUpdateFurniture(selectedFurniture.id, { armDepth: numVal });
+      onUpdateFurniture(selectedFurniture.id, { height: numVal }, false);
+    } else if (
+      field === "mainDepth" &&
+      numVal >= 25 &&
+      numVal <= selectedFurniture.depth - 15
+    ) {
+      onUpdateFurniture(selectedFurniture.id, { mainDepth: numVal }, false);
+    } else if (
+      field === "sideWidth" &&
+      numVal >= 25 &&
+      numVal <= selectedFurniture.width - 15
+    ) {
+      onUpdateFurniture(selectedFurniture.id, { sideWidth: numVal }, false);
     }
   };
 
@@ -262,26 +312,29 @@ export default function ControlPanel({
       const valid =
         !furnInputs.width || numVal < 20 ? 30 : Math.min(frontWidthCm, numVal);
       setFurnInputs((prev) => ({ ...prev, width: String(valid) }));
-      onUpdateFurniture(selectedFurniture.id, { width: valid });
+      onUpdateFurniture(selectedFurniture.id, { width: valid }, false);
     } else if (field === "depth") {
       const valid =
         !furnInputs.depth || numVal < 20 ? 30 : Math.min(sideLengthCm, numVal);
       setFurnInputs((prev) => ({ ...prev, depth: String(valid) }));
-      onUpdateFurniture(selectedFurniture.id, { depth: valid });
+      onUpdateFurniture(selectedFurniture.id, { depth: valid }, false);
     } else if (field === "height") {
       const valid =
         !furnInputs.height || numVal < 10 ? 20 : Math.min(room.t, numVal);
       setFurnInputs((prev) => ({ ...prev, height: String(valid) }));
-      onUpdateFurniture(selectedFurniture.id, { height: valid });
-    } else if (field === "armDepth") {
-      const maxArm = Math.max(
-        30,
-        Math.min(selectedFurniture.width - 15, selectedFurniture.depth - 15),
-      );
+      onUpdateFurniture(selectedFurniture.id, { height: valid }, false);
+    } else if (field === "mainDepth") {
+      const maxMain = Math.max(25, selectedFurniture.depth - 15);
       const valid =
-        !furnInputs.armDepth || numVal < 30 ? 45 : Math.min(maxArm, numVal);
-      setFurnInputs((prev) => ({ ...prev, armDepth: String(valid) }));
-      onUpdateFurniture(selectedFurniture.id, { armDepth: valid });
+        !furnInputs.mainDepth || numVal < 25 ? 45 : Math.min(maxMain, numVal);
+      setFurnInputs((prev) => ({ ...prev, mainDepth: String(valid) }));
+      onUpdateFurniture(selectedFurniture.id, { mainDepth: valid }, false);
+    } else if (field === "sideWidth") {
+      const maxSide = Math.max(25, selectedFurniture.width - 15);
+      const valid =
+        !furnInputs.sideWidth || numVal < 25 ? 40 : Math.min(maxSide, numVal);
+      setFurnInputs((prev) => ({ ...prev, sideWidth: String(valid) }));
+      onUpdateFurniture(selectedFurniture.id, { sideWidth: valid }, false);
     }
   };
 
@@ -360,6 +413,20 @@ export default function ControlPanel({
     onResetAll();
   };
 
+  const startRenameSlot = () => {
+    if (!activeSlot) return;
+    setSlotNameDraft(activeSlot.name);
+    setIsRenamingSlot(true);
+  };
+
+  const commitRenameSlot = () => {
+    const trimmed = slotNameDraft.trim();
+    if (trimmed && activeSlot) {
+      onRenameSlot(activeSlot.id, trimmed);
+    }
+    setIsRenamingSlot(false);
+  };
+
   const distFromRight = Math.max(0, maxDoorOffset - clampedDoorOffset);
   const isDoorCentered = door.align === "center";
   const isDoorRight = door.align === "right";
@@ -410,7 +477,7 @@ export default function ControlPanel({
   return (
     <aside
       style={{ "--panel-w": `${panelWidth}px` }}
-      className={`relative flex h-full w-full flex-col border-l transition-colors md:w-[var(--panel-w)] ${
+      className={`relative flex h-full w-full flex-col border-l transition-colors md:w-(--panel-w) ${
         isDark
           ? "border-zinc-800 bg-zinc-950 text-zinc-100"
           : "border-zinc-300 bg-zinc-50/70 text-zinc-900"
@@ -433,9 +500,9 @@ export default function ControlPanel({
         />
       </div>
 
-      {/* HEADER */}
+      {/* HEADER + UNDO / REDO */}
       <div
-        className={`flex items-center justify-between border-b px-4 py-3 ${
+        className={`flex items-center justify-between border-b px-3.5 py-2.5 ${
           isDark ? "border-zinc-800 bg-zinc-900" : "border-zinc-200 bg-white"
         }`}
       >
@@ -444,15 +511,44 @@ export default function ControlPanel({
             MyRoomPlanner
           </h1>
           <p
-            className={`truncate text-xs ${isDark ? "text-zinc-400" : "text-zinc-500"}`}
+            className={`truncate text-[11px] ${isDark ? "text-zinc-400" : "text-zinc-500"}`}
           >
             {t.subtitle}
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Undo & Redo */}
+          <button
+            type="button"
+            disabled={!canUndo}
+            onClick={onUndo}
+            title={t.undo}
+            className={`flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-35 ${
+              isDark
+                ? "border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                : "border-zinc-300 bg-white text-zinc-700 shadow-2xs hover:bg-zinc-50"
+            }`}
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+
+          <button
+            type="button"
+            disabled={!canRedo}
+            onClick={onRedo}
+            title={t.redo}
+            className={`flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-35 ${
+              isDark
+                ? "border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                : "border-zinc-300 bg-white text-zinc-700 shadow-2xs hover:bg-zinc-50"
+            }`}
+          >
+            <Redo2 className="h-3.5 w-3.5" />
+          </button>
+
           <div
-            className={`flex rounded-lg border p-0.5 text-[11px] font-semibold ${
+            className={`mx-0.5 flex rounded-lg border p-0.5 text-[10px] font-semibold ${
               isDark
                 ? "border-zinc-700 bg-zinc-950"
                 : "border-zinc-300 bg-zinc-100"
@@ -461,7 +557,7 @@ export default function ControlPanel({
             <button
               type="button"
               onClick={() => setLang("id")}
-              className={`rounded-md px-2 py-1 transition ${
+              className={`rounded-md px-1.5 py-0.5 transition ${
                 lang === "id"
                   ? isDark
                     ? "bg-zinc-800 text-white shadow-2xs"
@@ -476,7 +572,7 @@ export default function ControlPanel({
             <button
               type="button"
               onClick={() => setLang("en")}
-              className={`rounded-md px-2 py-1 transition ${
+              className={`rounded-md px-1.5 py-0.5 transition ${
                 lang === "en"
                   ? isDark
                     ? "bg-zinc-800 text-white shadow-2xs"
@@ -493,17 +589,17 @@ export default function ControlPanel({
           <button
             type="button"
             onClick={() => setTheme(isDark ? "light" : "dark")}
-            title={isDark ? "Ganti ke Light Mode" : "Ganti ke Dark Mode"}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+            title={isDark ? "Light Mode" : "Dark Mode"}
+            className={`flex h-7 w-7 items-center justify-center rounded-lg border transition ${
               isDark
                 ? "border-zinc-700 bg-zinc-800 text-amber-400 hover:border-zinc-600 hover:bg-zinc-700"
                 : "border-zinc-300 bg-white text-zinc-700 shadow-2xs hover:border-zinc-400 hover:bg-zinc-50"
             }`}
           >
             {isDark ? (
-              <Sun className="h-4 w-4" />
+              <Sun className="h-3.5 w-3.5" />
             ) : (
-              <Moon className="h-4 w-4" />
+              <Moon className="h-3.5 w-3.5" />
             )}
           </button>
         </div>
@@ -511,11 +607,160 @@ export default function ControlPanel({
 
       {/* KONTEN SCROLLABLE */}
       <div
-        className={`flex-1 space-y-4 overflow-y-auto p-4 ${
+        className={`flex-1 space-y-3.5 overflow-y-auto p-3.5 ${
           isDark ? "dark-scroll" : "light-scroll"
         }`}
       >
-        {/* BAGIAN 1: TAMPILAN 3D / 2D DENAH, SNAP & KAMERA */}
+        {/* TEMPLATE / LAYOUT SLOTS (PERBANDINGAN TATA RUANG) */}
+        <section className={cardClass}>
+          <div className="mb-2 flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1.5">
+              <FolderOpen className="h-3.5 w-3.5 text-blue-500" />
+              <span className="text-xs font-semibold">{t.layoutTitle}</span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={onDuplicateSlot}
+                title={t.duplicateLayout}
+                className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                  isDark
+                    ? "border-zinc-700 bg-zinc-800 text-zinc-200 hover:border-blue-500 hover:text-blue-300"
+                    : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:border-blue-600 hover:text-blue-700"
+                }`}
+              >
+                <Copy className="h-3 w-3" />
+                <span>{t.duplicateLayout}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onCreateNewSlot}
+                title={t.newLayout}
+                className={`flex items-center gap-0.5 rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                  isDark
+                    ? "border-zinc-700 bg-zinc-800 text-zinc-200 hover:border-zinc-500"
+                    : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:border-zinc-400"
+                }`}
+              >
+                <Plus className="h-3 w-3" />
+                <span>{t.newLayout}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Daftar Pill Slot Layout */}
+          <div className="flex flex-wrap gap-1.5">
+            {slots.map((slot, idx) => {
+              const isActive = slot.id === activeSlotId;
+              return (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => onSelectSlot(slot.id)}
+                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+                    isActive
+                      ? "border-blue-600 bg-blue-600 text-white shadow-2xs"
+                      : isDark
+                        ? "border-zinc-700 bg-zinc-800/80 text-zinc-300 hover:border-zinc-600"
+                        : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:border-zinc-400"
+                  }`}
+                >
+                  <span
+                    className={`rounded px-1 text-[9px] ${
+                      isActive
+                        ? "bg-blue-500 text-white"
+                        : isDark
+                          ? "bg-zinc-900 text-zinc-400"
+                          : "bg-zinc-200 text-zinc-600"
+                    }`}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span className="max-w-28.75 truncate">{slot.name}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Bar Rename & Delete Slot Aktif */}
+          {activeSlot && (
+            <div
+              className={`mt-2 flex items-center justify-between gap-1.5 rounded-lg border px-2 py-1.5 ${
+                isDark
+                  ? "border-zinc-800 bg-zinc-950/70"
+                  : "border-zinc-200 bg-zinc-100/70"
+              }`}
+            >
+              {isRenamingSlot ? (
+                <div className="flex flex-1 items-center gap-1">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={slotNameDraft}
+                    onChange={(e) => setSlotNameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitRenameSlot();
+                      if (e.key === "Escape") setIsRenamingSlot(false);
+                    }}
+                    className={`${inputClass} py-1! text-[11px]`}
+                  />
+                  <button
+                    type="button"
+                    onClick={commitRenameSlot}
+                    className="rounded-md bg-blue-600 p-1 text-white hover:bg-blue-700"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <span className="truncate text-[11px] font-semibold">
+                      {activeSlot.name}
+                    </span>
+                    <span className="ml-1.5 text-[10px] text-zinc-500">
+                      ({activeSlot.furnitures?.length || 0} item)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={startRenameSlot}
+                      title={t.renameLayout}
+                      className={`rounded p-1 transition ${
+                        isDark
+                          ? "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                          : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800"
+                      }`}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+
+                    {slots.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteSlot(activeSlot.id)}
+                        title={t.deleteLayout}
+                        className={`rounded p-1 transition ${
+                          isDark
+                            ? "text-zinc-400 hover:bg-zinc-800 hover:text-red-400"
+                            : "text-zinc-500 hover:bg-zinc-200 hover:text-red-600"
+                        }`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* TAMPILAN 3D / 2D DENAH, SNAP & KAMERA */}
         <section className={cardClass}>
           <div className="mb-2.5 flex items-center justify-between gap-2">
             <span className="text-xs font-semibold">{t.viewAndCamera}</span>
@@ -599,7 +844,6 @@ export default function ControlPanel({
             </button>
           </div>
 
-          {/* Bar Toggle: Auto-Hide Tembok + Magnetic Snap */}
           <div
             className={`mt-2 grid gap-1.5 ${viewMode === "3d" ? "grid-cols-2" : "grid-cols-1"}`}
           >
@@ -650,7 +894,6 @@ export default function ControlPanel({
         {/* MODE A: INSPECTOR FURNITUR */}
         {selectedFurniture ? (
           <section className={`space-y-3.5 ${cardClass}`}>
-            {/* Bar Kembali + Lock, Duplikat & Hapus */}
             <div
               className={`flex items-center justify-between gap-1.5 border-b pb-2.5 ${
                 isDark ? "border-zinc-800" : "border-zinc-200/80"
@@ -718,7 +961,6 @@ export default function ControlPanel({
               </div>
             </div>
 
-            {/* Banner Status Locked */}
             {isLocked && (
               <div
                 className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-[11px] font-medium ${
@@ -732,7 +974,6 @@ export default function ControlPanel({
               </div>
             )}
 
-            {/* Peringatan Tabrakan / Menghalangi Pintu */}
             {(selectedConflict?.hasOverlap ||
               selectedConflict?.hasDoorBlock) && (
               <div
@@ -757,7 +998,7 @@ export default function ControlPanel({
               </div>
             )}
 
-            {/* Opsi Tipe & Varian Khusus per Kategori */}
+            {/* Opsi Tipe & Varian Khusus */}
             <div
               className={`space-y-2.5 ${subCardClass} ${
                 isLocked ? "pointer-events-none opacity-55" : ""
@@ -900,17 +1141,35 @@ export default function ControlPanel({
 
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] text-zinc-500">
-                          {t.armDepthLabel}
+                          {t.mainDepthLabel}
                         </span>
                         <input
                           type="text"
                           inputMode="numeric"
-                          value={furnInputs.armDepth}
+                          onFocus={onRecordHistorySnapshot}
+                          value={furnInputs.mainDepth}
                           onChange={(e) =>
-                            handleFurnDimTyping("armDepth", e.target.value)
+                            handleFurnDimTyping("mainDepth", e.target.value)
                           }
-                          onBlur={() => handleFurnDimBlur("armDepth")}
-                          className={`${inputClass} !w-20 text-right`}
+                          onBlur={() => handleFurnDimBlur("mainDepth")}
+                          className={`${inputClass} w-20! text-right`}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-zinc-500">
+                          {t.sideWidthLabel}
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          onFocus={onRecordHistorySnapshot}
+                          value={furnInputs.sideWidth}
+                          onChange={(e) =>
+                            handleFurnDimTyping("sideWidth", e.target.value)
+                          }
+                          onBlur={() => handleFurnDimBlur("sideWidth")}
+                          className={`${inputClass} w-20! text-right`}
                         />
                       </div>
                     </div>
@@ -920,7 +1179,6 @@ export default function ControlPanel({
 
               {selectedFurniture.type === "wardrobe" && (
                 <div className="space-y-2.5">
-                  {/* Pilihan Susunan Pintu: Vertikal vs Grid (Susun) */}
                   <div>
                     <span className="mb-1 block text-[11px] text-zinc-500">
                       {t.wardrobeLayoutLabel}
@@ -1105,7 +1363,7 @@ export default function ControlPanel({
               )}
             </div>
 
-            {/* Dimensi P × L × T */}
+            {/* Dimensi Total P × L × T */}
             <div className={isLocked ? "pointer-events-none opacity-55" : ""}>
               <label
                 className={`mb-1.5 block text-[11px] font-semibold ${
@@ -1123,6 +1381,7 @@ export default function ControlPanel({
                     type="text"
                     inputMode="numeric"
                     disabled={isLocked}
+                    onFocus={onRecordHistorySnapshot}
                     value={furnInputs.width}
                     onChange={(e) =>
                       handleFurnDimTyping("width", e.target.value)
@@ -1139,6 +1398,7 @@ export default function ControlPanel({
                     type="text"
                     inputMode="numeric"
                     disabled={isLocked}
+                    onFocus={onRecordHistorySnapshot}
                     value={furnInputs.depth}
                     onChange={(e) =>
                       handleFurnDimTyping("depth", e.target.value)
@@ -1155,6 +1415,7 @@ export default function ControlPanel({
                     type="text"
                     inputMode="numeric"
                     disabled={isLocked}
+                    onFocus={onRecordHistorySnapshot}
                     value={furnInputs.height}
                     onChange={(e) =>
                       handleFurnDimTyping("height", e.target.value)
@@ -1245,10 +1506,13 @@ export default function ControlPanel({
                 max="355"
                 step="5"
                 value={selectedFurniture.rotation}
+                onPointerDown={onRecordHistorySnapshot}
                 onChange={(e) =>
-                  onUpdateFurniture(selectedFurniture.id, {
-                    rotation: Number(e.target.value),
-                  })
+                  onUpdateFurniture(
+                    selectedFurniture.id,
+                    { rotation: Number(e.target.value) },
+                    false,
+                  )
                 }
                 className={`h-2 w-full cursor-pointer appearance-none rounded-full border accent-blue-600 ${
                   isDark
@@ -1823,7 +2087,7 @@ export default function ControlPanel({
               </div>
 
               <div className={subCardClass}>
-                <div className="mx-auto flex max-w-[230px] flex-col items-center gap-1.5">
+                <div className="mx-auto flex max-w-57.5 flex-col items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => toggleWallSelection("back")}

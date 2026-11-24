@@ -1,6 +1,15 @@
 export const TRANSLATIONS = {
   id: {
     subtitle: "Simulasi Tata Ruang 3D",
+    undo: "Undo (Ctrl+Z)",
+    redo: "Redo (Ctrl+Y)",
+    layoutTitle: "Template Tata Ruang",
+    layoutDefault1: "Layout Lama",
+    layoutCopySuffix: "Baru",
+    duplicateLayout: "Duplikat",
+    newLayout: "Baru",
+    deleteLayout: "Hapus Layout",
+    renameLayout: "Ubah Nama",
     viewAndCamera: "Tampilan & Kamera",
     mode3D: "3D",
     mode2D: "2D Denah",
@@ -76,9 +85,9 @@ export const TRANSLATIONS = {
     emptyDesc1:
       "Masukkan Panjang, Lebar, dan Tinggi kamar di panel kanan lalu klik",
     controlsHint3D:
-      "3D: Klik Kiri Putar • Seret Furnitur • Arrow Key Geser 1 cm",
+      "3D: Seret Furnitur • Arrow Key (1 cm) • Ctrl+Z Undo • [ / ] Ganti Layout",
     controlsHint2D:
-      "2D Denah: Seret Furnitur • Arrow Key (1 cm) / Shift+Arrow (10 cm)",
+      "2D Denah: Seret Furnitur • Shift+Arrow (10 cm) • Ctrl+Z Undo • [ / ] Ganti Layout",
 
     // Katalog & Inspector Furnitur
     catalogTitle: "Katalog Furnitur",
@@ -112,14 +121,15 @@ export const TRANSLATIONS = {
     lCornerLabel: "Arah Siku Letter-L",
     lCornerLeft: "Siku Kiri",
     lCornerRight: "Siku Kanan",
-    armDepthLabel: "Lebar Daun Meja (cm)",
+    mainDepthLabel: "Lebar Meja Utama (cm)",
+    sideWidthLabel: "Lebar Sayap Samping (cm)",
     wardrobeLayoutLabel: "Susunan Pintu",
     wardrobeVertical: "Vertikal",
     wardrobeGrid: "Grid (Susun)",
     wardrobeColsLabel: "Kolom",
     wardrobeRowsLabel: "Tingkat",
     doorCountLabel: "Jumlah Pintu",
-    dimensionsCm: "Dimensi (cm)",
+    dimensionsCm: "Dimensi Total (cm)",
     dimWidthX: "Panjang (X)",
     dimDepthZ: "Lebar (Z)",
     dimHeightY: "Tinggi (Y)",
@@ -141,7 +151,7 @@ export const TRANSLATIONS = {
     warnOverlap: "Posisi bertabrakan dengan furnitur lain.",
     warnDoorBlock: "Menghalangi ruang ayunan pintu kamar.",
     dragTip:
-      "Tip: Seret di lantai (otomatis snap), pakai Arrow Key (1 cm) / Shift+Arrow (10 cm), atau R putar 90°.",
+      "Tip: Seret di lantai (otomatis snap), Arrow Key (1 cm) / Shift+Arrow (10 cm), R putar 90°, Ctrl+Z Undo.",
 
     swatches: [
       "Putih Hangat",
@@ -158,6 +168,15 @@ export const TRANSLATIONS = {
   },
   en: {
     subtitle: "3D Room Layout Simulator",
+    undo: "Undo (Ctrl+Z)",
+    redo: "Redo (Ctrl+Y)",
+    layoutTitle: "Layout Templates",
+    layoutDefault1: "Current Layout",
+    layoutCopySuffix: "New",
+    duplicateLayout: "Duplicate",
+    newLayout: "New",
+    deleteLayout: "Delete Layout",
+    renameLayout: "Rename",
     viewAndCamera: "View & Camera",
     mode3D: "3D",
     mode2D: "2D Plan",
@@ -233,9 +252,9 @@ export const TRANSLATIONS = {
     emptyTitle: "No Room Created Yet",
     emptyDesc1: "Enter Length, Width, and Height on the right panel then click",
     controlsHint3D:
-      "3D: Left Drag Orbit • Drag Furniture • Arrow Keys Nudge 1 cm",
+      "3D: Drag Furniture • Arrow Keys (1 cm) • Ctrl+Z Undo • [ / ] Switch Layout",
     controlsHint2D:
-      "2D Plan: Drag Furniture • Arrow Keys (1 cm) / Shift+Arrow (10 cm)",
+      "2D Plan: Drag Furniture • Shift+Arrow (10 cm) • Ctrl+Z Undo • [ / ] Switch Layout",
 
     // Furniture Catalog & Inspector
     catalogTitle: "Furniture Catalog",
@@ -268,14 +287,15 @@ export const TRANSLATIONS = {
     lCornerLabel: "L-Shape Return Side",
     lCornerLeft: "Left Return",
     lCornerRight: "Right Return",
-    armDepthLabel: "Tabletop Depth (cm)",
+    mainDepthLabel: "Main Desk Depth (cm)",
+    sideWidthLabel: "Return Wing Width (cm)",
     wardrobeLayoutLabel: "Door Layout",
     wardrobeVertical: "Vertical",
     wardrobeGrid: "Grid (Stacked)",
     wardrobeColsLabel: "Columns",
     wardrobeRowsLabel: "Rows",
     doorCountLabel: "Door Count",
-    dimensionsCm: "Dimensions (cm)",
+    dimensionsCm: "Total Dimensions (cm)",
     dimWidthX: "Width (X)",
     dimDepthZ: "Depth (Z)",
     dimHeightY: "Height (Y)",
@@ -297,7 +317,7 @@ export const TRANSLATIONS = {
     warnOverlap: "Overlapping with another furniture item.",
     warnDoorBlock: "Blocking the room door swing clearance.",
     dragTip:
-      "Tip: Drag on floor (auto-snaps), use Arrow Keys (1 cm) / Shift+Arrow (10 cm), or R to rotate 90°.",
+      "Tip: Drag on floor (auto-snaps), Arrow Keys (1 cm) / Shift+Arrow (10 cm), R rotate 90°, Ctrl+Z Undo.",
 
     swatches: [
       "Warm White",

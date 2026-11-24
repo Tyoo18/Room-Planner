@@ -53,6 +53,8 @@ export default function RoomViewport({
   selectedFurnitureId,
   conflictIds,
   onSelectFurniture,
+  onFurnitureDragStart,
+  onFurnitureDragEnd,
   onMoveFurniture,
   snapEnabled = true,
   viewMode = "3d",
@@ -83,6 +85,8 @@ export default function RoomViewport({
   const snapEnabledRef = useRef(snapEnabled);
   const onManualMoveRef = useRef(onCameraManualMove);
   const onSelectFurnRef = useRef(onSelectFurniture);
+  const onDragStartRef = useRef(onFurnitureDragStart);
+  const onDragEndRef = useRef(onFurnitureDragEnd);
   const onMoveFurnRef = useRef(onMoveFurniture);
 
   const latestDataRef = useRef({ isRoomCreated, room, door, furnitures });
@@ -105,8 +109,16 @@ export default function RoomViewport({
   useEffect(() => {
     onManualMoveRef.current = onCameraManualMove;
     onSelectFurnRef.current = onSelectFurniture;
+    onDragStartRef.current = onFurnitureDragStart;
+    onDragEndRef.current = onFurnitureDragEnd;
     onMoveFurnRef.current = onMoveFurniture;
-  }, [onCameraManualMove, onSelectFurniture, onMoveFurniture]);
+  }, [
+    onCameraManualMove,
+    onSelectFurniture,
+    onFurnitureDragStart,
+    onFurnitureDragEnd,
+    onMoveFurniture,
+  ]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -209,6 +221,7 @@ export default function RoomViewport({
 
     let draggingId = null;
     let dragOffset = { x: 0, z: 0 };
+    let dragInitialPos = { x: 0, z: 0 };
     let pointerDownPos = { x: 0, y: 0 };
     let didPointerMove = false;
 
@@ -247,16 +260,19 @@ export default function RoomViewport({
           if (onSelectFurnRef.current) {
             onSelectFurnRef.current(item.id);
           }
-          // Hanya mulai drag jika furnitur TIDAK dikunci
           if (
             !item.locked &&
             raycaster.ray.intersectPlane(floorPlane, planeHit)
           ) {
             draggingId = item.id;
+            dragInitialPos = { x: item.x, z: item.z };
             dragOffset = {
               x: item.x / 100 - planeHit.x,
               z: item.z / 100 - planeHit.z,
             };
+            if (onDragStartRef.current) {
+              onDragStartRef.current();
+            }
             controls.enabled = false;
             renderer.domElement.style.cursor = "grabbing";
           }
@@ -321,6 +337,18 @@ export default function RoomViewport({
 
     const handlePointerUp = () => {
       if (draggingId) {
+        const currentItem = latestDataRef.current.furnitures.find(
+          (f) => f.id === draggingId,
+        );
+        const changed =
+          currentItem &&
+          (currentItem.x !== dragInitialPos.x ||
+            currentItem.z !== dragInitialPos.z);
+
+        if (onDragEndRef.current) {
+          onDragEndRef.current(Boolean(changed));
+        }
+
         draggingId = null;
         controls.enabled = true;
         renderer.domElement.style.cursor = "auto";
