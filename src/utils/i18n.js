@@ -94,10 +94,70 @@ export const TRANSLATIONS = {
     catalogSubtitle: "Klik untuk taruh di kamar",
     placedItemsTitle: "Isi Kamar",
     noFurnitureYet: "Belum ada furnitur di dalam kamar.",
+
+    // ✅ NEW — Tab Assets / Layers & Pencarian
+    tabAssets: "Assets",
+    tabLayers: "Layers",
+    searchAssetsPlaceholder: "Cari furnitur atau elemen...",
+    emptyLayersHint: "Belum ada item di dalam kamar.",
+
     catBed: "Kasur",
     catDesk: "Meja",
     catWardrobe: "Lemari",
     catChair: "Kursi",
+
+    // Zona Katalog
+    zoneSleep: "Tidur",
+    zoneWork: "Kerja & Duduk",
+    zoneStorage: "Penyimpanan",
+    zoneFloorDecor: "Lantai & Dekor",
+    zoneWallAccess: "Dinding & Akses",
+
+    // Rak Parametrik
+    catShelf: "Rak",
+    shelfCube: "Rak Kubus",
+    shelfConsole: "Rak Konsol",
+    shelfColsLabel: "Kolom Kubus",
+    shelfRowsLabel: "Baris Kubus",
+    shelfTiersLabel: "Tingkat Ambalan",
+    shelfLegPairsLabel: "Pasang Kaki",
+    colorShelfFrame: "Rangka Luar",
+    colorShelfInner: "Sekat Dalam",
+    colorShelfBoard: "Papan Kayu",
+    colorShelfLegs: "Rangka Kaki Besi",
+
+    // Karpet & Elemen Dinding
+    catCarpet: "Karpet",
+    carpetRect: "Persegi",
+    carpetRound: "Bulat / Oval",
+    carpetBorderLabel: "Lis Pinggir",
+    colorCarpetBase: "Warna Utama Karpet",
+    colorCarpetBorder: "Warna Lis Pinggir",
+
+    catWindow: "Jendela",
+    windowDouble: "2 Daun",
+    windowSingle: "1 Daun",
+    windowVent: "Ventilasi Atas",
+    catOutlet: "Stopkontak",
+    outletDouble: "2 Lubang",
+    outletSingle: "1 Lubang",
+    outletSwitch: "Saklar + Stopkontak",
+
+    wallTargetLabel: "Terpasang di Tembok",
+    elevationTitle: "Tampak Depan Tembok (2D)",
+    elevationHint:
+      "Seret kotak di atas untuk atur posisi (tahan Alt untuk presisi 1 cm).",
+    elWidthCm: "Lebar (cm)",
+    elHeightCm: "Tinggi (cm)",
+    elOffsetCm: "Jarak dari Kiri (cm)",
+    elElevationCm: "Tinggi dari Lantai (cm)",
+    colorWindowFrame: "Warna Kusen",
+    colorWindowGlass: "Warna Kaca",
+    colorOutletPlate: "Warna Bingkai",
+    colorOutletSocket: "Warna Modul",
+    warnWallOverlap: "Bertumpuk dengan jendela/stopkontak lain di tembok ini.",
+    warnWallDoorBlock: "Menabrak area pintu kamar.",
+
     bedFrame: "Dipan",
     bedFloor: "Kasur Lantai",
     deskRect: "Persegi",
@@ -261,10 +321,70 @@ export const TRANSLATIONS = {
     catalogSubtitle: "Click to place in room",
     placedItemsTitle: "Room Items",
     noFurnitureYet: "No furniture placed in the room yet.",
+
+    // ✅ NEW — Assets / Layers Tabs & Search
+    tabAssets: "Assets",
+    tabLayers: "Layers",
+    searchAssetsPlaceholder: "Search furniture or elements...",
+    emptyLayersHint: "No items placed in room yet.",
+
     catBed: "Bed",
     catDesk: "Desk",
     catWardrobe: "Wardrobe",
     catChair: "Chair",
+
+    // Catalog Zones
+    zoneSleep: "Sleep",
+    zoneWork: "Work & Seating",
+    zoneStorage: "Storage",
+    zoneFloorDecor: "Floor & Decor",
+    zoneWallAccess: "Wall & Access",
+
+    // Parametric Shelves
+    catShelf: "Shelf",
+    shelfCube: "Cube Shelf",
+    shelfConsole: "Console Shelf",
+    shelfColsLabel: "Cube Columns",
+    shelfRowsLabel: "Cube Rows",
+    shelfTiersLabel: "Shelf Tiers",
+    shelfLegPairsLabel: "Leg Pairs",
+    colorShelfFrame: "Outer Frame",
+    colorShelfInner: "Inner Dividers",
+    colorShelfBoard: "Wood Planks",
+    colorShelfLegs: "Metal Frame Legs",
+
+    // Carpet & Wall Elements
+    catCarpet: "Carpet",
+    carpetRect: "Rectangle",
+    carpetRound: "Round / Oval",
+    carpetBorderLabel: "Border Trim",
+    colorCarpetBase: "Carpet Base Color",
+    colorCarpetBorder: "Border Color",
+
+    catWindow: "Window",
+    windowDouble: "Double Sash",
+    windowSingle: "Single Sash",
+    windowVent: "Top Vent",
+    catOutlet: "Outlet",
+    outletDouble: "Double Socket",
+    outletSingle: "Single Socket",
+    outletSwitch: "Switch + Socket",
+
+    wallTargetLabel: "Mounted on Wall",
+    elevationTitle: "Wall Elevation (2D)",
+    elevationHint:
+      "Drag the box above to position (hold Alt for 1 cm precision).",
+    elWidthCm: "Width (cm)",
+    elHeightCm: "Height (cm)",
+    elOffsetCm: "Offset from Left (cm)",
+    elElevationCm: "Elevation from Floor (cm)",
+    colorWindowFrame: "Window Frame",
+    colorWindowGlass: "Glass Tint",
+    colorOutletPlate: "Plate Color",
+    colorOutletSocket: "Socket Module",
+    warnWallOverlap: "Overlaps another window/outlet on this wall.",
+    warnWallDoorBlock: "Clashes with the room door area.",
+
     bedFrame: "Bed Frame",
     bedFloor: "Floor Mattress",
     deskRect: "Rectangle",

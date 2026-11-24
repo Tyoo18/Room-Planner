@@ -27,15 +27,10 @@ import {
   Check,
 } from "lucide-react";
 import ColorPicker from "./ColorPicker";
-import { getWallDistancesCm } from "../utils/furnitureGeometry";
+import WallElementInspector from "./WallElementInspector";
+import { getWallDistancesCm, getFurnitureColorLabels } from "../furniture";
+import { INSPECTOR_REGISTRY } from "./inspectors";
 import { TRANSLATIONS } from "../utils/i18n";
-
-const BED_SIZE_PRESETS = [
-  { label: "90×200", w: 90, d: 200 },
-  { label: "120×200", w: 120, d: 200 },
-  { label: "160×200", w: 160, d: 200 },
-  { label: "180×200", w: 180, d: 200 },
-];
 
 export default function ControlPanel({
   slots = [],
@@ -69,6 +64,17 @@ export default function ControlPanel({
   onToggleLockFurniture,
   onDuplicateFurniture,
   onDeleteFurniture,
+  // ✅ PROPS BARU: Wall Elements
+  wallElements = [],
+  selectedWallElement = null,
+  selectedWallElementConflict = null,
+  onSelectWallElement,
+  onDeselectWallElement,
+  onUpdateWallElement,
+  onToggleLockWallElement,
+  onDuplicateWallElement,
+  onDeleteWallElement,
+  // ─────────────────────────────
   snapEnabled = true,
   setSnapEnabled,
   viewMode = "3d",
@@ -891,8 +897,14 @@ export default function ControlPanel({
           </div>
         </section>
 
-        {/* MODE A: INSPECTOR FURNITUR */}
+        {/* ============================================================
+            PERCABANGAN MODE PANEL KANAN:
+            1) selectedFurniture    → Inspector Furnitur
+            2) selectedWallElement  → WallElementInspector  ✅ BARU
+            3) default              → Pengaturan Kamar, Pintu & Cat
+           ============================================================ */}
         {selectedFurniture ? (
+          /* MODE A: INSPECTOR FURNITUR */
           <section className={`space-y-3.5 ${cardClass}`}>
             <div
               className={`flex items-center justify-between gap-1.5 border-b pb-2.5 ${
@@ -999,369 +1011,37 @@ export default function ControlPanel({
             )}
 
             {/* Opsi Tipe & Varian Khusus */}
-            <div
-              className={`space-y-2.5 ${subCardClass} ${
-                isLocked ? "pointer-events-none opacity-55" : ""
-              }`}
-            >
-              <label
-                className={`block text-[11px] font-semibold ${
-                  isDark ? "text-zinc-300" : "text-zinc-700"
-                }`}
-              >
-                {t.variantType}
-              </label>
-
-              {selectedFurniture.type === "bed" && (
-                <>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[
-                      { id: "frame", label: t.bedFrame, defaultH: 50 },
-                      { id: "floor", label: t.bedFloor, defaultH: 24 },
-                    ].map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() =>
-                          onUpdateFurniture(selectedFurniture.id, {
-                            bedStyle: opt.id,
-                            height: opt.defaultH,
-                          })
-                        }
-                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
-                          selectedFurniture.bedStyle === opt.id
-                            ? isDark
-                              ? "border-zinc-100 bg-zinc-100 text-zinc-900"
-                              : "border-zinc-900 bg-zinc-900 text-white"
-                            : isDark
-                              ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                              : "border-zinc-300 bg-white text-zinc-700"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="pt-1">
-                    <span className="mb-1 block text-[10px] font-medium text-zinc-500">
-                      {t.quickSizePreset}
-                    </span>
-                    <div className="grid grid-cols-4 gap-1">
-                      {BED_SIZE_PRESETS.map((p) => (
-                        <button
-                          key={p.label}
-                          type="button"
-                          onClick={() =>
-                            onUpdateFurniture(selectedFurniture.id, {
-                              width: p.w,
-                              depth: p.d,
-                            })
-                          }
-                          className={`rounded-md border py-1 text-[10px] font-semibold transition ${
-                            selectedFurniture.width === p.w &&
-                            selectedFurniture.depth === p.d
-                              ? "border-blue-600 bg-blue-600 text-white"
-                              : isDark
-                                ? "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-600"
-                                : "border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"
-                          }`}
-                        >
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {selectedFurniture.type === "desk" && (
-                <>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[
-                      { id: "rect", label: t.deskRect },
-                      { id: "l-shape", label: t.deskL },
-                      { id: "round", label: t.deskRound },
-                    ].map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() =>
-                          onUpdateFurniture(selectedFurniture.id, {
-                            deskShape: opt.id,
-                          })
-                        }
-                        className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
-                          selectedFurniture.deskShape === opt.id
-                            ? isDark
-                              ? "border-zinc-100 bg-zinc-100 text-zinc-900"
-                              : "border-zinc-900 bg-zinc-900 text-white"
-                            : isDark
-                              ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                              : "border-zinc-300 bg-white text-zinc-700"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {selectedFurniture.deskShape === "l-shape" && (
-                    <div className="space-y-2 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-zinc-500">
-                          {t.lCornerLabel}
-                        </span>
-                        <div className="flex gap-1">
-                          {[
-                            { id: "left", label: t.lCornerLeft },
-                            { id: "right", label: t.lCornerRight },
-                          ].map((side) => (
-                            <button
-                              key={side.id}
-                              type="button"
-                              onClick={() =>
-                                onUpdateFurniture(selectedFurniture.id, {
-                                  lCorner: side.id,
-                                })
-                              }
-                              className={`rounded-md border px-2 py-1 text-[11px] font-semibold ${
-                                selectedFurniture.lCorner === side.id
-                                  ? "border-blue-600 bg-blue-600 text-white"
-                                  : isDark
-                                    ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                                    : "border-zinc-300 bg-white text-zinc-700"
-                              }`}
-                            >
-                              {side.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-zinc-500">
-                          {t.mainDepthLabel}
-                        </span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          onFocus={onRecordHistorySnapshot}
-                          value={furnInputs.mainDepth}
-                          onChange={(e) =>
-                            handleFurnDimTyping("mainDepth", e.target.value)
-                          }
-                          onBlur={() => handleFurnDimBlur("mainDepth")}
-                          className={`${inputClass} w-20! text-right`}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-zinc-500">
-                          {t.sideWidthLabel}
-                        </span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          onFocus={onRecordHistorySnapshot}
-                          value={furnInputs.sideWidth}
-                          onChange={(e) =>
-                            handleFurnDimTyping("sideWidth", e.target.value)
-                          }
-                          onBlur={() => handleFurnDimBlur("sideWidth")}
-                          className={`${inputClass} w-20! text-right`}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {selectedFurniture.type === "wardrobe" && (
-                <div className="space-y-2.5">
-                  <div>
-                    <span className="mb-1 block text-[11px] text-zinc-500">
-                      {t.wardrobeLayoutLabel}
-                    </span>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {[
-                        { id: "vertical", label: t.wardrobeVertical },
-                        { id: "grid", label: t.wardrobeGrid },
-                      ].map((lay) => (
-                        <button
-                          key={lay.id}
-                          type="button"
-                          onClick={() =>
-                            onUpdateFurniture(selectedFurniture.id, {
-                              wardrobeLayout: lay.id,
-                            })
-                          }
-                          className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
-                            (selectedFurniture.wardrobeLayout || "vertical") ===
-                            lay.id
-                              ? isDark
-                                ? "border-zinc-100 bg-zinc-100 text-zinc-900"
-                                : "border-zinc-900 bg-zinc-900 text-white"
-                              : isDark
-                                ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                                : "border-zinc-300 bg-white text-zinc-700"
-                          }`}
-                        >
-                          {lay.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {(selectedFurniture.wardrobeLayout || "vertical") ===
-                  "vertical" ? (
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-500">
-                        {t.doorCountLabel}
-                      </span>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4].map((cnt) => (
-                          <button
-                            key={cnt}
-                            type="button"
-                            onClick={() =>
-                              onUpdateFurniture(selectedFurniture.id, {
-                                doorCount: cnt,
-                              })
-                            }
-                            className={`h-7 w-7 rounded-md border text-xs font-semibold transition ${
-                              selectedFurniture.doorCount === cnt
-                                ? "border-blue-600 bg-blue-600 text-white"
-                                : isDark
-                                  ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                                  : "border-zinc-300 bg-white text-zinc-700"
-                            }`}
-                          >
-                            {cnt}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-zinc-500">
-                          {t.wardrobeColsLabel}
-                        </span>
-                        <div className="flex gap-1">
-                          {[1, 2, 3, 4].map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() =>
-                                onUpdateFurniture(selectedFurniture.id, {
-                                  wardrobeCols: c,
-                                })
-                              }
-                              className={`h-7 w-7 rounded-md border text-xs font-semibold transition ${
-                                (selectedFurniture.wardrobeCols || 2) === c
-                                  ? "border-blue-600 bg-blue-600 text-white"
-                                  : isDark
-                                    ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                                    : "border-zinc-300 bg-white text-zinc-700"
-                              }`}
-                            >
-                              {c}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-zinc-500">
-                          {t.wardrobeRowsLabel}
-                        </span>
-                        <div className="flex gap-1">
-                          {[2, 3, 4, 5].map((r) => (
-                            <button
-                              key={r}
-                              type="button"
-                              onClick={() =>
-                                onUpdateFurniture(selectedFurniture.id, {
-                                  wardrobeRows: r,
-                                })
-                              }
-                              className={`h-7 w-7 rounded-md border text-xs font-semibold transition ${
-                                (selectedFurniture.wardrobeRows || 3) === r
-                                  ? "border-blue-600 bg-blue-600 text-white"
-                                  : isDark
-                                    ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                                    : "border-zinc-300 bg-white text-zinc-700"
-                              }`}
-                            >
-                              {r}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[
-                      { id: "swing", label: t.wardrobeSwing },
-                      { id: "sliding", label: t.wardrobeSliding },
-                    ].map((mech) => (
-                      <button
-                        key={mech.id}
-                        type="button"
-                        onClick={() =>
-                          onUpdateFurniture(selectedFurniture.id, {
-                            wardrobeDoorType: mech.id,
-                          })
-                        }
-                        className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
-                          selectedFurniture.wardrobeDoorType === mech.id
-                            ? "border-blue-600 bg-blue-600 text-white"
-                            : isDark
-                              ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                              : "border-zinc-300 bg-white text-zinc-700"
-                        }`}
-                      >
-                        {mech.label}
-                      </button>
-                    ))}
-                  </div>
+            {(() => {
+              const ActiveInspector =
+                INSPECTOR_REGISTRY[selectedFurniture.type];
+              if (!ActiveInspector) return null;
+              return (
+                <div
+                  className={`space-y-2.5 ${subCardClass} ${
+                    isLocked ? "pointer-events-none opacity-55" : ""
+                  }`}
+                >
+                  <label
+                    className={`block text-[11px] font-semibold ${
+                      isDark ? "text-zinc-300" : "text-zinc-700"
+                    }`}
+                  >
+                    {t.variantType}
+                  </label>
+                  <ActiveInspector
+                    item={selectedFurniture}
+                    onUpdate={onUpdateFurniture}
+                    furnInputs={furnInputs}
+                    onTyping={handleFurnDimTyping}
+                    onBlur={handleFurnDimBlur}
+                    onRecordHistorySnapshot={onRecordHistorySnapshot}
+                    inputClass={inputClass}
+                    isDark={isDark}
+                    t={t}
+                  />
                 </div>
-              )}
-
-              {selectedFurniture.type === "chair" && (
-                <div className="grid grid-cols-3 gap-1.5">
-                  {[
-                    { id: "standard", label: t.chairStandard },
-                    { id: "office", label: t.chairOffice },
-                    { id: "stool", label: t.chairStool },
-                  ].map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() =>
-                        onUpdateFurniture(selectedFurniture.id, {
-                          chairStyle: opt.id,
-                          height: opt.id === "stool" ? 45 : 85,
-                        })
-                      }
-                      className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
-                        selectedFurniture.chairStyle === opt.id
-                          ? isDark
-                            ? "border-zinc-100 bg-zinc-100 text-zinc-900"
-                            : "border-zinc-900 bg-zinc-900 text-white"
-                          : isDark
-                            ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                            : "border-zinc-300 bg-white text-zinc-700"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+              );
+            })()}
 
             {/* Dimensi Total P × L × T */}
             <div className={isLocked ? "pointer-events-none opacity-55" : ""}>
@@ -1582,55 +1262,66 @@ export default function ControlPanel({
             )}
 
             {/* Warna Furnitur */}
-            <div className={`space-y-2.5 ${subCardClass}`}>
-              <ColorPicker
-                theme={theme}
-                lang={lang}
-                label={
-                  selectedFurniture.type === "bed"
-                    ? t.colorMattress
-                    : selectedFurniture.type === "desk"
-                      ? t.colorTableTop
-                      : selectedFurniture.type === "wardrobe"
-                        ? t.colorWardrobeBody
-                        : t.colorSeat
-                }
-                color={selectedFurniture.color1}
-                onChange={(hex) =>
-                  onUpdateFurniture(selectedFurniture.id, { color1: hex })
-                }
-              />
+            {(() => {
+              const colorLabels = getFurnitureColorLabels(selectedFurniture, t);
+              return (
+                <div className={`space-y-2.5 ${subCardClass}`}>
+                  <ColorPicker
+                    theme={theme}
+                    lang={lang}
+                    label={colorLabels.color1}
+                    color={selectedFurniture.color1}
+                    onChange={(hex) =>
+                      onUpdateFurniture(selectedFurniture.id, { color1: hex })
+                    }
+                  />
 
-              {!(
-                selectedFurniture.type === "bed" &&
-                selectedFurniture.bedStyle === "floor"
-              ) && (
-                <ColorPicker
-                  theme={theme}
-                  lang={lang}
-                  label={
-                    selectedFurniture.type === "bed"
-                      ? t.colorBedFrame
-                      : selectedFurniture.type === "desk"
-                        ? t.colorTableLegs
-                        : selectedFurniture.type === "wardrobe"
-                          ? t.colorWardrobeDoor
-                          : t.colorChairLegs
-                  }
-                  color={selectedFurniture.color2}
-                  onChange={(hex) =>
-                    onUpdateFurniture(selectedFurniture.id, { color2: hex })
-                  }
-                />
-              )}
-            </div>
+                  {colorLabels.color2 && (
+                    <ColorPicker
+                      theme={theme}
+                      lang={lang}
+                      label={colorLabels.color2}
+                      color={selectedFurniture.color2}
+                      onChange={(hex) =>
+                        onUpdateFurniture(selectedFurniture.id, {
+                          color2: hex,
+                        })
+                      }
+                    />
+                  )}
+                </div>
+              );
+            })()}
 
             <p className="text-[11px] leading-relaxed text-zinc-500">
               {t.dragTip}
             </p>
           </section>
+        ) : selectedWallElement ? (
+          <WallElementInspector
+            element={selectedWallElement}
+            allElements={wallElements}
+            conflict={selectedWallElementConflict}
+            walls={walls}
+            door={door}
+            frontWidthCm={frontWidthCm}
+            sideLengthCm={sideLengthCm}
+            roomHeightCm={room.t}
+            onSelectElement={onSelectWallElement}
+            onDeselect={onDeselectWallElement}
+            onUpdate={onUpdateWallElement}
+            onToggleLock={onToggleLockWallElement}
+            onDuplicate={onDuplicateWallElement}
+            onDelete={onDeleteWallElement}
+            onRecordHistorySnapshot={onRecordHistorySnapshot}
+            subCardClass={subCardClass}
+            inputClass={inputClass}
+            theme={theme}
+            lang={lang}
+            t={t}
+          />
         ) : (
-          /* MODE B: PENGATURAN KAMAR, PINTU & CAT */
+          /* MODE C: PENGATURAN KAMAR, PINTU & CAT */
           <>
             <form
               onSubmit={handleCreateSubmit}

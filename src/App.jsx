@@ -13,6 +13,11 @@ import {
   clampFurnitureToRoom,
   checkFurnitureConflicts,
 } from "./utils/furnitureGeometry";
+import {
+  createDefaultWallElement,
+  clampWallElement,
+  checkWallElementConflicts,
+} from "./wallElements";
 import { TRANSLATIONS } from "./utils/i18n";
 
 const STORAGE_KEY = "mrp_layouts_v1";
@@ -52,6 +57,7 @@ function createSlotObject(name, overrides = {}) {
     walls: JSON.parse(JSON.stringify(DEFAULT_WALLS)),
     door: { ...DEFAULT_DOOR },
     furnitures: [],
+    wallElements: [],
     ...overrides,
   };
 }
@@ -83,6 +89,7 @@ export default function App() {
   const [lang, setLang] = useState(
     () => localStorage.getItem("mrp_lang") || "id",
   );
+  const [leftPanelWidth, setLeftPanelWidth] = useState(276);
   const [panelWidth, setPanelWidth] = useState(356);
 
   const initialStore = useMemo(() => loadInitialLayoutStore(lang), []);
@@ -109,14 +116,25 @@ export default function App() {
   const [furnitures, setFurnitures] = useState(initialActive.furnitures || []);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState(null);
 
-  // History stack untuk Undo / Redo
+  const [wallElements, setWallElements] = useState(
+    initialActive.wallElements || [],
+  );
+  const [selectedWallElementId, setSelectedWallElementId] = useState(null);
+
+  // History stack gabungan untuk Undo / Redo
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const dragSnapshotRef = useRef(null);
+
   const furnituresRef = useRef(furnitures);
   useEffect(() => {
     furnituresRef.current = furnitures;
   }, [furnitures]);
+
+  const wallElementsRef = useRef(wallElements);
+  useEffect(() => {
+    wallElementsRef.current = wallElements;
+  }, [wallElements]);
 
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [viewMode, setViewMode] = useState("3d");
@@ -133,7 +151,7 @@ export default function App() {
     localStorage.setItem("mrp_lang", lang);
   }, [lang]);
 
-  // Auto-save perubahan ruangan & furnitur ke slot aktif di localStorage
+  // Auto-save perubahan ke localStorage
   useEffect(() => {
     setSlots((prevSlots) => {
       const nextSlots = prevSlots.map((slot) =>
@@ -145,6 +163,7 @@ export default function App() {
               walls,
               door,
               furnitures,
+              wallElements,
             }
           : slot,
       );
@@ -158,7 +177,23 @@ export default function App() {
       }
       return nextSlots;
     });
-  }, [activeSlotId, isRoomCreated, room, walls, door, furnitures]);
+  }, [
+    activeSlotId,
+    isRoomCreated,
+    room,
+    walls,
+    door,
+    furnitures,
+    wallElements,
+  ]);
+
+  const getCurrentSnapshot = useCallback(
+    () => ({
+      furnitures: furnituresRef.current,
+      wallElements: wallElementsRef.current,
+    }),
+    [],
+  );
 
   const pushHistorySnapshot = useCallback((snapshot) => {
     setPast((prev) => [...prev.slice(-(MAX_HISTORY - 1)), snapshot]);
@@ -166,8 +201,26 @@ export default function App() {
   }, []);
 
   const handleRecordHistorySnapshot = useCallback(() => {
-    pushHistorySnapshot(furnituresRef.current);
-  }, [pushHistorySnapshot]);
+    pushHistorySnapshot(getCurrentSnapshot());
+  }, [pushHistorySnapshot, getCurrentSnapshot]);
+
+  const applySnapshot = useCallback((snapshot) => {
+    const nextFurn = Array.isArray(snapshot)
+      ? snapshot
+      : snapshot?.furnitures || [];
+    const nextWallEls = Array.isArray(snapshot)
+      ? []
+      : snapshot?.wallElements || [];
+
+    setFurnitures(nextFurn);
+    setWallElements(nextWallEls);
+    setSelectedFurnitureId((currId) =>
+      nextFurn.some((f) => f.id === currId) ? currId : null,
+    );
+    setSelectedWallElementId((currId) =>
+      nextWallEls.some((w) => w.id === currId) ? currId : null,
+    );
+  }, []);
 
   const handleUndo = useCallback(() => {
     setPast((prevPast) => {
@@ -176,16 +229,13 @@ export default function App() {
       const nextPast = prevPast.slice(0, -1);
 
       setFuture((prevFuture) => [
-        furnituresRef.current,
+        getCurrentSnapshot(),
         ...prevFuture.slice(0, MAX_HISTORY - 1),
       ]);
-      setFurnitures(previousState);
-      setSelectedFurnitureId((currId) =>
-        previousState.some((f) => f.id === currId) ? currId : null,
-      );
+      applySnapshot(previousState);
       return nextPast;
     });
-  }, []);
+  }, [getCurrentSnapshot, applySnapshot]);
 
   const handleRedo = useCallback(() => {
     setFuture((prevFuture) => {
@@ -195,14 +245,22 @@ export default function App() {
 
       setPast((prevPast) => [
         ...prevPast.slice(-(MAX_HISTORY - 1)),
-        furnituresRef.current,
+        getCurrentSnapshot(),
       ]);
-      setFurnitures(nextState);
-      setSelectedFurnitureId((currId) =>
-        nextState.some((f) => f.id === currId) ? currId : null,
-      );
+      applySnapshot(nextState);
       return remainingFuture;
     });
+  }, [getCurrentSnapshot, applySnapshot]);
+
+  // Seleksi saling eksklusif antara Furnitur dan Elemen Dinding
+  const handleSelectFurniture = useCallback((id) => {
+    setSelectedFurnitureId(id);
+    if (id) setSelectedWallElementId(null);
+  }, []);
+
+  const handleSelectWallElement = useCallback((id) => {
+    setSelectedWallElementId(id);
+    if (id) setSelectedFurnitureId(null);
   }, []);
 
   // Manajemen Layout Slots
@@ -218,7 +276,9 @@ export default function App() {
       setWalls(target.walls || JSON.parse(JSON.stringify(DEFAULT_WALLS)));
       setDoor(target.door || { ...DEFAULT_DOOR });
       setFurnitures(target.furnitures || []);
+      setWallElements(target.wallElements || []);
       setSelectedFurnitureId(null);
+      setSelectedWallElementId(null);
       setPast([]);
       setFuture([]);
     },
@@ -235,11 +295,13 @@ export default function App() {
       walls: JSON.parse(JSON.stringify(walls)),
       door: { ...door },
       furnitures: JSON.parse(JSON.stringify(furnitures)),
+      wallElements: JSON.parse(JSON.stringify(wallElements)),
     });
 
     setSlots((prev) => [...prev, copySlot]);
     setActiveSlotId(copySlot.id);
     setSelectedFurnitureId(null);
+    setSelectedWallElementId(null);
     setPast([]);
     setFuture([]);
   };
@@ -253,12 +315,15 @@ export default function App() {
       walls: JSON.parse(JSON.stringify(walls)),
       door: { ...door },
       furnitures: [],
+      wallElements: [],
     });
 
     setSlots((prev) => [...prev, newSlot]);
     setActiveSlotId(newSlot.id);
     setFurnitures([]);
+    setWallElements([]);
     setSelectedFurnitureId(null);
+    setSelectedWallElementId(null);
     setPast([]);
     setFuture([]);
   };
@@ -292,7 +357,9 @@ export default function App() {
       setWalls(fallback.walls || JSON.parse(JSON.stringify(DEFAULT_WALLS)));
       setDoor(fallback.door || { ...DEFAULT_DOOR });
       setFurnitures(fallback.furnitures || []);
+      setWallElements(fallback.wallElements || []);
       setSelectedFurnitureId(null);
+      setSelectedWallElementId(null);
       setPast([]);
       setFuture([]);
     }
@@ -308,6 +375,7 @@ export default function App() {
     thickness: room.thickness,
   };
 
+  // Clamp furnitur & elemen dinding saat ukuran kamar berubah
   useEffect(() => {
     setFurnitures((prev) => {
       if (prev.length === 0) return prev;
@@ -322,7 +390,31 @@ export default function App() {
       });
       return changed ? next : prev;
     });
-  }, [frontWidthCm, sideLengthCm]);
+
+    setWallElements((prev) => {
+      if (prev.length === 0) return prev;
+      let changed = false;
+      const next = prev.map((el) => {
+        const clamped = clampWallElement(
+          el,
+          frontWidthCm,
+          sideLengthCm,
+          room.t,
+        );
+        if (
+          clamped.width !== el.width ||
+          clamped.height !== el.height ||
+          clamped.offsetCm !== el.offsetCm ||
+          clamped.elevationCm !== el.elevationCm
+        ) {
+          changed = true;
+          return clamped;
+        }
+        return el;
+      });
+      return changed ? next : prev;
+    });
+  }, [frontWidthCm, sideLengthCm, room.t]);
 
   const conflictMap = useMemo(() => {
     const map = new Map();
@@ -343,18 +435,46 @@ export default function App() {
     return { map, ids };
   }, [furnitures, frontWidthCm, sideLengthCm, door]);
 
+  const wallElementConflictMap = useMemo(() => {
+    const map = new Map();
+    const ids = new Set();
+    wallElements.forEach((el) => {
+      const res = checkWallElementConflicts(
+        el,
+        wallElements,
+        frontWidthCm,
+        sideLengthCm,
+        room.t,
+        door,
+      );
+      map.set(el.id, res);
+      if (res.hasOverlap || res.hasDoorBlock) {
+        ids.add(el.id);
+      }
+    });
+    return { map, ids };
+  }, [wallElements, frontWidthCm, sideLengthCm, room.t, door]);
+
   const selectedFurniture = useMemo(
     () => furnitures.find((f) => f.id === selectedFurnitureId) || null,
     [furnitures, selectedFurnitureId],
   );
 
-  const unlockedFurnitureCount = useMemo(
-    () => furnitures.filter((f) => !f.locked).length,
-    [furnitures],
+  const selectedWallElement = useMemo(
+    () => wallElements.find((w) => w.id === selectedWallElementId) || null,
+    [wallElements, selectedWallElementId],
   );
 
+  const unlockedFurnitureCount = useMemo(
+    () =>
+      furnitures.filter((f) => !f.locked).length +
+      wallElements.filter((w) => !w.locked).length,
+    [furnitures, wallElements],
+  );
+
+  // --- CRUD Furnitur ---
   const handleAddFurniture = (type, variantPatch) => {
-    pushHistorySnapshot(furnituresRef.current);
+    pushHistorySnapshot(getCurrentSnapshot());
     const rawItem = createDefaultFurniture(type, variantPatch);
     const offsetIndex = furnitures.length % 5;
     rawItem.x = (offsetIndex - 2) * 12;
@@ -362,13 +482,13 @@ export default function App() {
     const placed = clampFurnitureToRoom(rawItem, frontWidthCm, sideLengthCm);
 
     setFurnitures((prev) => [...prev, placed]);
-    setSelectedFurnitureId(placed.id);
+    handleSelectFurniture(placed.id);
   };
 
   const handleUpdateFurniture = useCallback(
     (id, patch, recordHistory = true) => {
       if (recordHistory) {
-        pushHistorySnapshot(furnituresRef.current);
+        pushHistorySnapshot(getCurrentSnapshot());
       }
       setFurnitures((prev) =>
         prev.map((item) => {
@@ -386,24 +506,24 @@ export default function App() {
         }),
       );
     },
-    [frontWidthCm, sideLengthCm, pushHistorySnapshot],
+    [frontWidthCm, sideLengthCm, pushHistorySnapshot, getCurrentSnapshot],
   );
 
   const handleToggleLockFurniture = useCallback(
     (id) => {
-      pushHistorySnapshot(furnituresRef.current);
+      pushHistorySnapshot(getCurrentSnapshot());
       setFurnitures((prev) =>
         prev.map((item) =>
           item.id === id ? { ...item, locked: !item.locked } : item,
         ),
       );
     },
-    [pushHistorySnapshot],
+    [pushHistorySnapshot, getCurrentSnapshot],
   );
 
   const handleFurnitureDragStart = useCallback(() => {
-    dragSnapshotRef.current = furnituresRef.current;
-  }, []);
+    dragSnapshotRef.current = getCurrentSnapshot();
+  }, [getCurrentSnapshot]);
 
   const handleFurnitureDragEnd = useCallback(
     (didMove) => {
@@ -427,7 +547,7 @@ export default function App() {
   const handleDuplicateFurniture = (id) => {
     const source = furnitures.find((f) => f.id === id);
     if (!source) return;
-    pushHistorySnapshot(furnituresRef.current);
+    pushHistorySnapshot(getCurrentSnapshot());
     const copy = clampFurnitureToRoom(
       {
         ...source,
@@ -440,7 +560,7 @@ export default function App() {
       sideLengthCm,
     );
     setFurnitures((prev) => [...prev, copy]);
-    setSelectedFurnitureId(copy.id);
+    handleSelectFurniture(copy.id);
   };
 
   const handleDeleteFurniture = useCallback(
@@ -448,10 +568,104 @@ export default function App() {
       setFurnitures((prev) => {
         const target = prev.find((f) => f.id === id);
         if (!target || target.locked) return prev;
-        pushHistorySnapshot(prev);
+        pushHistorySnapshot({
+          furnitures: prev,
+          wallElements: wallElementsRef.current,
+        });
         return prev.filter((f) => f.id !== id);
       });
       setSelectedFurnitureId((prevId) => (prevId === id ? null : prevId));
+    },
+    [pushHistorySnapshot],
+  );
+
+  // --- CRUD Elemen Dinding (Jendela & Stopkontak) ---
+  const handleAddWallElement = (type, variantPatch) => {
+    pushHistorySnapshot(getCurrentSnapshot());
+    const rawEl = createDefaultWallElement(type, variantPatch);
+    // Jika user sedang fokus ke 1 tembok tertentu, tempel langsung di tembok itu
+    if (selectedWalls.length === 1) {
+      rawEl.wall = selectedWalls[0];
+    }
+    const offsetShift = (wallElements.length % 4) * 20;
+    rawEl.offsetCm += offsetShift;
+
+    const placed = clampWallElement(rawEl, frontWidthCm, sideLengthCm, room.t);
+    setWallElements((prev) => [...prev, placed]);
+    handleSelectWallElement(placed.id);
+  };
+
+  const handleUpdateWallElement = useCallback(
+    (id, patch, recordHistory = true) => {
+      if (recordHistory) {
+        pushHistorySnapshot(getCurrentSnapshot());
+      }
+      setWallElements((prev) =>
+        prev.map((el) => {
+          if (el.id !== id) return el;
+          if (el.locked && patch.locked === undefined) {
+            const colorOnly = {};
+            if (patch.color1 !== undefined) colorOnly.color1 = patch.color1;
+            if (patch.color2 !== undefined) colorOnly.color2 = patch.color2;
+            return Object.keys(colorOnly).length > 0
+              ? { ...el, ...colorOnly }
+              : el;
+          }
+          const updated = { ...el, ...patch };
+          return clampWallElement(updated, frontWidthCm, sideLengthCm, room.t);
+        }),
+      );
+    },
+    [
+      frontWidthCm,
+      sideLengthCm,
+      room.t,
+      pushHistorySnapshot,
+      getCurrentSnapshot,
+    ],
+  );
+
+  const handleToggleLockWallElement = useCallback(
+    (id) => {
+      pushHistorySnapshot(getCurrentSnapshot());
+      setWallElements((prev) =>
+        prev.map((el) => (el.id === id ? { ...el, locked: !el.locked } : el)),
+      );
+    },
+    [pushHistorySnapshot, getCurrentSnapshot],
+  );
+
+  const handleDuplicateWallElement = (id) => {
+    const source = wallElements.find((w) => w.id === id);
+    if (!source) return;
+    pushHistorySnapshot(getCurrentSnapshot());
+    const copy = clampWallElement(
+      {
+        ...source,
+        locked: false,
+        id: `we_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        offsetCm: source.offsetCm + 25,
+      },
+      frontWidthCm,
+      sideLengthCm,
+      room.t,
+    );
+    setWallElements((prev) => [...prev, copy]);
+    handleSelectWallElement(copy.id);
+  };
+
+  const handleDeleteWallElement = useCallback(
+    (id) => {
+      setWallElements((prev) => {
+        const target = prev.find((w) => w.id === id);
+        if (!target || target.locked) return prev;
+        pushHistorySnapshot({
+          furnitures: furnituresRef.current,
+          wallElements: prev,
+        });
+        return prev.filter((w) => w.id !== id);
+      });
+      setSelectedWallElementId((prevId) => (prevId === id ? null : prevId));
     },
     [pushHistorySnapshot],
   );
@@ -462,7 +676,6 @@ export default function App() {
       const tag = e.target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-      // Undo: Ctrl+Z / Cmd+Z
       if (
         (e.ctrlKey || e.metaKey) &&
         !e.shiftKey &&
@@ -473,7 +686,6 @@ export default function App() {
         return;
       }
 
-      // Redo: Ctrl+Y / Cmd+Y atau Ctrl+Shift+Z
       if (
         ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") ||
         ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z")
@@ -483,7 +695,6 @@ export default function App() {
         return;
       }
 
-      // Quick Switch Layout Slot: [ dan ]
       if (e.key === "[" && slots.length > 1) {
         const idx = slots.findIndex((s) => s.id === activeSlotId);
         const prevIdx = (idx - 1 + slots.length) % slots.length;
@@ -506,6 +717,21 @@ export default function App() {
         return;
       }
 
+      // Shortcut saat Elemen Dinding terpilih
+      if (selectedWallElement) {
+        if (e.key === "l" || e.key === "L") {
+          handleToggleLockWallElement(selectedWallElement.id);
+        } else if (
+          (e.key === "Delete" || e.key === "Backspace") &&
+          !selectedWallElement.locked
+        ) {
+          handleDeleteWallElement(selectedWallElement.id);
+        } else if (e.key === "Escape") {
+          setSelectedWallElementId(null);
+        }
+        return;
+      }
+
       if (!selectedFurniture) return;
 
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
@@ -513,7 +739,7 @@ export default function App() {
         if (selectedFurniture.locked) return;
 
         if (!e.repeat) {
-          pushHistorySnapshot(furnituresRef.current);
+          pushHistorySnapshot(getCurrentSnapshot());
         }
 
         const step = e.shiftKey ? 10 : 1;
@@ -558,6 +784,7 @@ export default function App() {
   }, [
     isRoomCreated,
     selectedFurniture,
+    selectedWallElement,
     frontWidthCm,
     sideLengthCm,
     slots,
@@ -566,10 +793,13 @@ export default function App() {
     handleUndo,
     handleRedo,
     pushHistorySnapshot,
+    getCurrentSnapshot,
     handleMoveFurniture,
     handleUpdateFurniture,
     handleToggleLockFurniture,
     handleDeleteFurniture,
+    handleToggleLockWallElement,
+    handleDeleteWallElement,
   ]);
 
   const handleCreateRoom = (validRoomData) => {
@@ -596,16 +826,25 @@ export default function App() {
   };
 
   const handleResetFurniture = () => {
-    setFurnitures((prev) => {
-      const lockedOnly = prev.filter((f) => f.locked);
-      if (lockedOnly.length !== prev.length) {
-        pushHistorySnapshot(prev);
-      }
-      if (!lockedOnly.some((f) => f.id === selectedFurnitureId)) {
-        setSelectedFurnitureId(null);
-      }
-      return lockedOnly;
-    });
+    const lockedFurn = furnitures.filter((f) => f.locked);
+    const lockedWallEls = wallElements.filter((w) => w.locked);
+
+    if (
+      lockedFurn.length !== furnitures.length ||
+      lockedWallEls.length !== wallElements.length
+    ) {
+      pushHistorySnapshot(getCurrentSnapshot());
+    }
+
+    setFurnitures(lockedFurn);
+    setWallElements(lockedWallEls);
+
+    if (!lockedFurn.some((f) => f.id === selectedFurnitureId)) {
+      setSelectedFurnitureId(null);
+    }
+    if (!lockedWallEls.some((w) => w.id === selectedWallElementId)) {
+      setSelectedWallElementId(null);
+    }
   };
 
   const handleResetAll = () => {
@@ -615,7 +854,9 @@ export default function App() {
     setSelectedWalls(["front", "back", "left", "right"]);
     setDoor(DEFAULT_DOOR);
     setFurnitures([]);
+    setWallElements([]);
     setSelectedFurnitureId(null);
+    setSelectedWallElementId(null);
     setPast([]);
     setFuture([]);
     setViewMode("3d");
@@ -630,24 +871,35 @@ export default function App() {
         theme === "dark" ? "bg-zinc-950" : "bg-zinc-100"
       }`}
     >
-      {/* Panel Kiri: Katalog Furnitur */}
-      <div className="hidden h-full md:block md:w-auto">
+      {/* Panel Kiri: Figma Assets & Layers */}
+      <div className="hidden h-full md:block md:shrink-0">
         <FurnitureCatalog
           isRoomCreated={isRoomCreated}
           furnitures={furnitures}
           selectedFurnitureId={selectedFurnitureId}
           conflictIds={conflictMap.ids}
           onAddFurniture={handleAddFurniture}
-          onSelectFurniture={setSelectedFurnitureId}
+          onSelectFurniture={handleSelectFurniture}
           onToggleLockFurniture={handleToggleLockFurniture}
           onDeleteFurniture={handleDeleteFurniture}
+          wallElements={wallElements}
+          selectedWallElementId={selectedWallElementId}
+          wallElementConflictIds={wallElementConflictMap.ids}
+          onAddWallElement={handleAddWallElement}
+          onSelectWallElement={handleSelectWallElement}
+          onToggleLockWallElement={handleToggleLockWallElement}
+          onDeleteWallElement={handleDeleteWallElement}
+          selectedWalls={selectedWalls}
+          onSelectWallLayer={(wallId) => setSelectedWalls([wallId])}
           theme={theme}
           lang={lang}
+          panelWidth={leftPanelWidth}
+          setPanelWidth={setLeftPanelWidth}
         />
       </div>
 
       {/* Tengah: Viewport 3D & 2D Denah */}
-      <div className="h-[52vh] w-full md:h-full md:flex-1">
+      <div className="h-[52vh] min-h-0 w-full min-w-0 overflow-hidden md:h-full md:flex-1">
         <RoomViewport
           isRoomCreated={isRoomCreated}
           room={computedRoomDimensions}
@@ -656,10 +908,14 @@ export default function App() {
           furnitures={furnitures}
           selectedFurnitureId={selectedFurnitureId}
           conflictIds={conflictMap.ids}
-          onSelectFurniture={setSelectedFurnitureId}
+          onSelectFurniture={handleSelectFurniture}
           onFurnitureDragStart={handleFurnitureDragStart}
           onFurnitureDragEnd={handleFurnitureDragEnd}
           onMoveFurniture={handleMoveFurniture}
+          wallElements={wallElements}
+          selectedWallElementId={selectedWallElementId}
+          wallElementConflictIds={wallElementConflictMap.ids}
+          onSelectWallElement={handleSelectWallElement}
           snapEnabled={snapEnabled}
           viewMode={viewMode}
           autoHideWalls={autoHideWalls}
@@ -671,7 +927,7 @@ export default function App() {
       </div>
 
       {/* Panel Kanan: Template Slot, Undo/Redo & Inspector */}
-      <div className="h-[48vh] w-full md:h-full md:w-auto">
+      <div className="h-[48vh] min-h-0 w-full md:h-full md:shrink-0 md:w-auto">
         <ControlPanel
           slots={slots}
           activeSlotId={activeSlotId}
@@ -706,6 +962,19 @@ export default function App() {
           onToggleLockFurniture={handleToggleLockFurniture}
           onDuplicateFurniture={handleDuplicateFurniture}
           onDeleteFurniture={handleDeleteFurniture}
+          wallElements={wallElements}
+          selectedWallElement={selectedWallElement}
+          selectedWallElementConflict={
+            selectedWallElement
+              ? wallElementConflictMap.map.get(selectedWallElement.id)
+              : null
+          }
+          onSelectWallElement={handleSelectWallElement}
+          onDeselectWallElement={() => setSelectedWallElementId(null)}
+          onUpdateWallElement={handleUpdateWallElement}
+          onToggleLockWallElement={handleToggleLockWallElement}
+          onDuplicateWallElement={handleDuplicateWallElement}
+          onDeleteWallElement={handleDeleteWallElement}
           snapEnabled={snapEnabled}
           setSnapEnabled={setSnapEnabled}
           viewMode={viewMode}

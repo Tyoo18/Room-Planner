@@ -9,6 +9,9 @@ import {
   snapFurniturePosition,
   getFurnitureWorldAABB,
 } from "../utils/furnitureGeometry";
+// ✅ NEW — sesuaikan path jika berbeda
+// import { buildWallElementGroup } from "../utils/wallElementGeometry";
+import { buildWallElementGroup, getWallWidthCm } from "../wallElements";
 import { TRANSLATIONS } from "../utils/i18n";
 
 function remapInnerFaceUV(geometry, u0, u1, v0, v1) {
@@ -56,6 +59,12 @@ export default function RoomViewport({
   onFurnitureDragStart,
   onFurnitureDragEnd,
   onMoveFurniture,
+  // ✅ PROPS BARU: Wall Elements
+  wallElements = [],
+  selectedWallElementId,
+  wallElementConflictIds,
+  onSelectWallElement,
+  // ─────────────────────────────
   snapEnabled = true,
   viewMode = "3d",
   autoHideWalls,
@@ -79,12 +88,14 @@ export default function RoomViewport({
   const gridHelperRef = useRef(null);
   const hemiLightRef = useRef(null);
   const wallGroupsRef = useRef({});
+  const wallElementGroupsRef = useRef({}); // ✅ NEW
 
   const autoHideRef = useRef(autoHideWalls);
   const viewModeRef = useRef(viewMode);
   const snapEnabledRef = useRef(snapEnabled);
   const onManualMoveRef = useRef(onCameraManualMove);
   const onSelectFurnRef = useRef(onSelectFurniture);
+  const onSelectWallElRef = useRef(onSelectWallElement); // ✅ NEW
   const onDragStartRef = useRef(onFurnitureDragStart);
   const onDragEndRef = useRef(onFurnitureDragEnd);
   const onMoveFurnRef = useRef(onMoveFurniture);
@@ -109,12 +120,14 @@ export default function RoomViewport({
   useEffect(() => {
     onManualMoveRef.current = onCameraManualMove;
     onSelectFurnRef.current = onSelectFurniture;
+    onSelectWallElRef.current = onSelectWallElement; // ✅ NEW
     onDragStartRef.current = onFurnitureDragStart;
     onDragEndRef.current = onFurnitureDragEnd;
     onMoveFurnRef.current = onMoveFurniture;
   }, [
     onCameraManualMove,
     onSelectFurniture,
+    onSelectWallElement, // ✅ NEW
     onFurnitureDragStart,
     onFurnitureDragEnd,
     onMoveFurniture,
@@ -224,6 +237,7 @@ export default function RoomViewport({
     let dragInitialPos = { x: 0, z: 0 };
     let pointerDownPos = { x: 0, y: 0 };
     let didPointerMove = false;
+    let didHitObject = false; // ✅ NEW — agar klik wall element tidak auto-deselect
 
     const getNdcFromEvent = (e) => {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -242,21 +256,45 @@ export default function RoomViewport({
       return null;
     };
 
+    // ✅ NEW — cari wallElementId dari hasil raycast
+    const findWallElementIdFromHit = (object) => {
+      let curr = object;
+      while (curr) {
+        if (curr.userData && curr.userData.wallElementId) {
+          return curr.userData.wallElementId;
+        }
+        curr = curr.parent;
+      }
+      return null;
+    };
+
     const handlePointerDown = (e) => {
       if (e.button !== 0 || !latestDataRef.current.isRoomCreated) return;
       pointerDownPos = { x: e.clientX, y: e.clientY };
       didPointerMove = false;
+      didHitObject = false; // ✅ reset
 
       getNdcFromEvent(e);
       raycaster.setFromCamera(pointerNdc, activeCameraRef.current);
 
       const hits = raycaster.intersectObjects(furnitureGroup.children, true);
       if (hits.length > 0) {
-        const hitId = findFurnitureIdFromHit(hits[0].object);
+        // ✅ NEW — prioritaskan furniture non-carpet
+        const solidHit = hits.find((h) => {
+          const id = findFurnitureIdFromHit(h.object);
+          const item = latestDataRef.current.furnitures.find(
+            (f) => f.id === id,
+          );
+          return item && item.type !== "carpet";
+        });
+        const chosenHit = solidHit || hits[0];
+
+        const hitId = findFurnitureIdFromHit(chosenHit.object);
         const item = latestDataRef.current.furnitures.find(
           (f) => f.id === hitId,
         );
         if (item) {
+          didHitObject = true; // ✅
           if (onSelectFurnRef.current) {
             onSelectFurnRef.current(item.id);
           }
@@ -275,6 +313,22 @@ export default function RoomViewport({
             }
             controls.enabled = false;
             renderer.domElement.style.cursor = "grabbing";
+          }
+        }
+        return; // ✅ jangan cek wall element saat furniture ter-hit
+      }
+
+      // ✅ NEW — tidak ada furniture, cek wall element
+      const wallElHits = raycaster.intersectObjects(
+        Object.values(wallElementGroupsRef.current),
+        true,
+      );
+      if (wallElHits.length > 0) {
+        const hitWallElId = findWallElementIdFromHit(wallElHits[0].object);
+        if (hitWallElId) {
+          didHitObject = true;
+          if (onSelectWallElRef.current) {
+            onSelectWallElRef.current(hitWallElId);
           }
         }
       }
@@ -296,7 +350,16 @@ export default function RoomViewport({
           true,
         );
         if (hoverHits.length > 0) {
-          const hId = findFurnitureIdFromHit(hoverHits[0].object);
+          // ✅ NEW — solidHit / chosenHit untuk hover juga
+          const solidHit = hoverHits.find((h) => {
+            const id = findFurnitureIdFromHit(h.object);
+            const item = latestDataRef.current.furnitures.find(
+              (f) => f.id === id,
+            );
+            return item && item.type !== "carpet";
+          });
+          const chosenHit = solidHit || hoverHits[0];
+          const hId = findFurnitureIdFromHit(chosenHit.object);
           const hItem = latestDataRef.current.furnitures.find(
             (f) => f.id === hId,
           );
@@ -304,7 +367,13 @@ export default function RoomViewport({
             ? "not-allowed"
             : "grab";
         } else {
-          renderer.domElement.style.cursor = "auto";
+          // ✅ NEW — hover wall element → cursor pointer
+          const wallElHits = raycaster.intersectObjects(
+            Object.values(wallElementGroupsRef.current),
+            true,
+          );
+          renderer.domElement.style.cursor =
+            wallElHits.length > 0 ? "pointer" : "auto";
         }
         return;
       }
@@ -355,12 +424,14 @@ export default function RoomViewport({
         return;
       }
 
+      // ✅ NEW — klik ruang kosong: deselect furniture & wall element
       if (
         !didPointerMove &&
-        latestDataRef.current.isRoomCreated &&
-        onSelectFurnRef.current
+        !didHitObject &&
+        latestDataRef.current.isRoomCreated
       ) {
-        onSelectFurnRef.current(null);
+        if (onSelectFurnRef.current) onSelectFurnRef.current(null);
+        if (onSelectWallElRef.current) onSelectWallElRef.current(null);
       }
     };
 
@@ -508,6 +579,7 @@ export default function RoomViewport({
 
     disposeGroupChildren(roomGroup);
     wallGroupsRef.current = {};
+    wallElementGroupsRef.current = {}; // ✅ NEW — reset container map
 
     if (!isRoomCreated) return;
 
@@ -562,6 +634,7 @@ export default function RoomViewport({
     ];
 
     const newWallGroups = {};
+    const newWallElementGroups = {}; // ✅ NEW
 
     wallSpecs.forEach((spec) => {
       const wg = new THREE.Group();
@@ -745,12 +818,56 @@ export default function RoomViewport({
         wg.add(arcLine);
       }
 
+      // ✅ NEW — container untuk wall elements (di-child-kan ke wg)
+      const elContainer = new THREE.Group();
+      elContainer.name = `wallElements_${spec.id}`;
+      elContainer.position.set(0, 0, 0);
+      wg.add(elContainer);
+      newWallElementGroups[spec.id] = elContainer;
+
       roomGroup.add(wg);
       newWallGroups[spec.id] = wg;
     });
 
     wallGroupsRef.current = newWallGroups;
+    wallElementGroupsRef.current = newWallElementGroups; // ✅ NEW
   }, [isRoomCreated, room, walls, door]);
+
+  // ✅ NEW — Render Mesh Elemen Dinding
+  useEffect(() => {
+    const wallElGroups = wallElementGroupsRef.current;
+    if (!wallElGroups) return;
+
+    // Bersihkan semua container
+    Object.values(wallElGroups).forEach((container) => {
+      disposeGroupChildren(container);
+    });
+
+    if (!isRoomCreated) return;
+
+    (wallElements || []).forEach((item) => {
+      const container = wallElGroups[item.wall];
+      if (!container) return;
+
+      const isSelected = item.id === selectedWallElementId;
+      const hasConflict = Boolean(wallElementConflictIds?.has?.(item.id));
+      const wallWidthCm = getWallWidthCm(item.wall, room.width, room.length);
+
+      const meshGroup = buildWallElementGroup(item, wallWidthCm, {
+        isSelected,
+        hasConflict,
+      });
+      container.add(meshGroup);
+    });
+  }, [
+    isRoomCreated,
+    room,
+    walls,
+    door,
+    wallElements,
+    selectedWallElementId,
+    wallElementConflictIds,
+  ]);
 
   useEffect(() => {
     const fGroup = furnitureGroupRef.current;
