@@ -153,32 +153,36 @@ export default function App() {
     localStorage.setItem("mrp_lang", lang);
   }, [lang]);
 
-  // Auto-save perubahan ke localStorage
+  // Auto-save perubahan ke localStorage dengan debounce 500ms
   useEffect(() => {
-    setSlots((prevSlots) => {
-      const nextSlots = prevSlots.map((slot) =>
-        slot.id === activeSlotId
-          ? {
-              ...slot,
-              isRoomCreated,
-              room,
-              walls,
-              door,
-              furnitures,
-              wallElements,
-            }
-          : slot,
-      );
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({ activeSlotId, slots: nextSlots }),
+    const timer = setTimeout(() => {
+      setSlots((prevSlots) => {
+        const nextSlots = prevSlots.map((slot) =>
+          slot.id === activeSlotId
+            ? {
+                ...slot,
+                isRoomCreated,
+                room,
+                walls,
+                door,
+                furnitures,
+                wallElements,
+              }
+            : slot,
         );
-      } catch {
-        // Abaikan quota error
-      }
-      return nextSlots;
-    });
+        try {
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({ activeSlotId, slots: nextSlots }),
+          );
+        } catch {
+          // Abaikan quota error
+        }
+        return nextSlots;
+      });
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [
     activeSlotId,
     isRoomCreated,
@@ -272,6 +276,23 @@ export default function App() {
       const target = slots.find((s) => s.id === targetId);
       if (!target) return;
 
+      // Flush perubahan slot aktif sebelum berpindah
+      setSlots((prev) =>
+        prev.map((s) =>
+          s.id === activeSlotId
+            ? {
+                ...s,
+                isRoomCreated,
+                room,
+                walls,
+                door,
+                furnitures,
+                wallElements,
+              }
+            : s,
+        ),
+      );
+
       setActiveSlotId(target.id);
       setIsRoomCreated(Boolean(target.isRoomCreated));
       setRoom(target.room || { ...DEFAULT_ROOM });
@@ -284,7 +305,16 @@ export default function App() {
       setPast([]);
       setFuture([]);
     },
-    [activeSlotId, slots],
+    [
+      activeSlotId,
+      slots,
+      isRoomCreated,
+      room,
+      walls,
+      door,
+      furnitures,
+      wallElements,
+    ],
   );
 
   const handleDuplicateSlot = () => {
@@ -779,6 +809,16 @@ export default function App() {
       ) {
         e.preventDefault();
         handleRedo();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        if (selectedFurniture) {
+          handleDuplicateFurniture(selectedFurniture.id);
+        } else if (selectedWallElement) {
+          handleDuplicateWallElement(selectedWallElement.id);
+        }
         return;
       }
 

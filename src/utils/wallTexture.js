@@ -1,48 +1,39 @@
 import * as THREE from "three";
 
-export function createWallPaintTexture(paintConfig) {
-  const { mode, color1, color2, splitRatio } = paintConfig;
+export function createWallPaintTexture(wall = {}) {
+  const mode = wall.mode || "full";
+  const color1 = wall.color1 || "#F5F3EE";
+  const color2 = wall.color2 || "#D8D2C7";
+  const splitRatio = Math.max(5, Math.min(95, Number(wall.splitRatio ?? 50)));
+
+  // Cat full cukup 128x128; pola split pakai 512x512 agar batas garis tetap tajam
+  const size = mode === "full" ? 128 : 512;
+
   const canvas = document.createElement("canvas");
-  canvas.width = 2048;
-  canvas.height = 2048;
+  canvas.width = size;
+  canvas.height = size;
   const ctx = canvas.getContext("2d");
 
-  ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  if (mode === "full") {
+  if (mode === "split-h") {
+    // splitRatio dihitung dari lantai (bawah), sedangkan Y=0 di Canvas adalah atas
+    const splitY = Math.round(size * (1 - splitRatio / 100));
     ctx.fillStyle = color1;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  } else if (mode === "split-h") {
-    // Bulatkan ke piksel utuh agar bebas anti-aliasing
-    const bottomHeight = Math.round((splitRatio / 100) * canvas.height);
-    const topHeight = canvas.height - bottomHeight;
-
-    ctx.fillStyle = color1;
-    ctx.fillRect(0, 0, canvas.width, topHeight);
-
+    ctx.fillRect(0, 0, size, splitY);
     ctx.fillStyle = color2;
-    ctx.fillRect(0, topHeight, canvas.width, bottomHeight);
+    ctx.fillRect(0, splitY, size, size - splitY);
   } else if (mode === "split-v") {
-    const leftWidth = Math.round((splitRatio / 100) * canvas.width);
-    const rightWidth = canvas.width - leftWidth;
-
+    const splitX = Math.round(size * (splitRatio / 100));
     ctx.fillStyle = color1;
-    ctx.fillRect(0, 0, leftWidth, canvas.height);
-
+    ctx.fillRect(0, 0, splitX, size);
     ctx.fillStyle = color2;
-    ctx.fillRect(leftWidth, 0, rightWidth, canvas.height);
+    ctx.fillRect(splitX, 0, size - splitX, size);
+  } else {
+    ctx.fillStyle = color1;
+    ctx.fillRect(0, 0, size, size);
   }
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.ClampToEdgeWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
-  // Matikan mipmap agar garis batas cat tetap tajam & tidak nge-blur saat dilihat dari sudut miring
-  texture.generateMipmaps = false;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
-
   return texture;
 }

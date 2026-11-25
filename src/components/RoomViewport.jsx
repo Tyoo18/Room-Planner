@@ -8,9 +8,8 @@ import {
   clampFurnitureToRoom,
   snapFurniturePosition,
   getFurnitureWorldAABB,
+  checkFurnitureConflicts,
 } from "../utils/furnitureGeometry";
-// ✅ NEW — sesuaikan path jika berbeda
-// import { buildWallElementGroup } from "../utils/wallElementGeometry";
 import { buildWallElementGroup, getWallWidthCm } from "../wallElements";
 import { TRANSLATIONS } from "../utils/i18n";
 
@@ -47,6 +46,49 @@ function disposeGroupChildren(group) {
   }
 }
 
+function drawWallGuideLines(
+  guideGroup,
+  item,
+  roomWidthCm,
+  roomLengthCm,
+  hasConflict,
+) {
+  disposeGroupChildren(guideGroup);
+  if (!item) return;
+
+  const W = roomWidthCm / 100;
+  const L = roomLengthCm / 100;
+  const { minX, maxX, minZ, maxZ } = getFurnitureWorldAABB(item);
+  const midX = (minX + maxX) / 2;
+  const midZ = (minZ + maxZ) / 2;
+  const y = 0.007;
+
+  const points = [
+    new THREE.Vector3(minX, y, midZ),
+    new THREE.Vector3(-W / 2, y, midZ),
+    new THREE.Vector3(maxX, y, midZ),
+    new THREE.Vector3(W / 2, y, midZ),
+    new THREE.Vector3(midX, y, minZ),
+    new THREE.Vector3(midX, y, -L / 2),
+    new THREE.Vector3(midX, y, maxZ),
+    new THREE.Vector3(midX, y, L / 2),
+  ];
+
+  const guideColor = hasConflict
+    ? "#ef4444"
+    : item.locked
+      ? "#f59e0b"
+      : "#2563eb";
+
+  const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+  const lineMat = new THREE.LineBasicMaterial({
+    color: guideColor,
+    transparent: true,
+    opacity: 0.75,
+  });
+  guideGroup.add(new THREE.LineSegments(lineGeo, lineMat));
+}
+
 export default function RoomViewport({
   isRoomCreated,
   room,
@@ -59,12 +101,10 @@ export default function RoomViewport({
   onFurnitureDragStart,
   onFurnitureDragEnd,
   onMoveFurniture,
-  // ✅ PROPS BARU: Wall Elements
   wallElements = [],
   selectedWallElementId,
   wallElementConflictIds,
   onSelectWallElement,
-  // ─────────────────────────────
   snapEnabled = true,
   viewMode = "3d",
   autoHideWalls,
@@ -86,18 +126,19 @@ export default function RoomViewport({
   const controlsRef = useRef(null);
   const roomGroupRef = useRef(null);
   const furnitureGroupRef = useRef(null);
+  const furnitureMeshMapRef = useRef(new Map());
   const guideGroupRef = useRef(null);
   const gridHelperRef = useRef(null);
   const hemiLightRef = useRef(null);
   const wallGroupsRef = useRef({});
-  const wallElementGroupsRef = useRef({}); // ✅ NEW
+  const wallElementGroupsRef = useRef({});
 
   const autoHideRef = useRef(autoHideWalls);
   const viewModeRef = useRef(viewMode);
   const snapEnabledRef = useRef(snapEnabled);
   const onManualMoveRef = useRef(onCameraManualMove);
   const onSelectFurnRef = useRef(onSelectFurniture);
-  const onSelectWallElRef = useRef(onSelectWallElement); // ✅ NEW
+  const onSelectWallElRef = useRef(onSelectWallElement);
   const onDragStartRef = useRef(onFurnitureDragStart);
   const onDragEndRef = useRef(onFurnitureDragEnd);
   const onMoveFurnRef = useRef(onMoveFurniture);
@@ -122,14 +163,14 @@ export default function RoomViewport({
   useEffect(() => {
     onManualMoveRef.current = onCameraManualMove;
     onSelectFurnRef.current = onSelectFurniture;
-    onSelectWallElRef.current = onSelectWallElement; // ✅ NEW
+    onSelectWallElRef.current = onSelectWallElement;
     onDragStartRef.current = onFurnitureDragStart;
     onDragEndRef.current = onFurnitureDragEnd;
     onMoveFurnRef.current = onMoveFurniture;
   }, [
     onCameraManualMove,
     onSelectFurniture,
-    onSelectWallElement, // ✅ NEW
+    onSelectWallElement,
     onFurnitureDragStart,
     onFurnitureDragEnd,
     onMoveFurniture,
@@ -186,8 +227,8 @@ export default function RoomViewport({
     const dirLight = new THREE.DirectionalLight("#fffdf8", 0.45);
     dirLight.position.set(4, 9, 5);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 2048;
-    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.mapSize.width = 1024;
+    dirLight.shadow.mapSize.height = 1024;
     dirLight.shadow.camera.near = 0.5;
     dirLight.shadow.camera.far = 25;
     const d = 6;
@@ -241,9 +282,10 @@ export default function RoomViewport({
     let draggingId = null;
     let dragOffset = { x: 0, z: 0 };
     let dragInitialPos = { x: 0, z: 0 };
+    let dragCurrentPos = { x: 0, z: 0 };
     let pointerDownPos = { x: 0, y: 0 };
     let didPointerMove = false;
-    let didHitObject = false; // ✅ NEW — agar klik wall element tidak auto-deselect
+    let didHitObject = false;
 
     const getNdcFromEvent = (e) => {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -262,7 +304,6 @@ export default function RoomViewport({
       return null;
     };
 
-    // ✅ NEW — cari wallElementId dari hasil raycast
     const findWallElementIdFromHit = (object) => {
       let curr = object;
       while (curr) {
@@ -274,18 +315,46 @@ export default function RoomViewport({
       return null;
     };
 
+    const updateLiveDraggedMesh = (item, nextX, nextZ) => {
+      const { room: r, door: dObj, furnitures: list } = latestDataRef.current;
+      const meshGroup = furnitureMeshMapRef.current.get(item.id);
+      if (meshGroup) {
+        meshGroup.position.set(nextX / 100, 0, nextZ / 100);
+      }
+
+      const candidate = { ...item, x: nextX, z: nextZ };
+      const conflictRes = checkFurnitureConflicts(
+        candidate,
+        list,
+        r.width,
+        r.length,
+        dObj,
+      );
+      const hasConflict = conflictRes.hasOverlap || conflictRes.hasDoorBlock;
+
+      if (meshGroup) {
+        const outlineColor = hasConflict ? "#ef4444" : "#2563eb";
+        meshGroup.traverse((child) => {
+          if (child.isLine && child.material?.color) {
+            child.material.color.set(outlineColor);
+          }
+        });
+      }
+
+      drawWallGuideLines(guideGroup, candidate, r.width, r.length, hasConflict);
+    };
+
     const handlePointerDown = (e) => {
       if (e.button !== 0 || !latestDataRef.current.isRoomCreated) return;
       pointerDownPos = { x: e.clientX, y: e.clientY };
       didPointerMove = false;
-      didHitObject = false; // ✅ reset
+      didHitObject = false;
 
       getNdcFromEvent(e);
       raycaster.setFromCamera(pointerNdc, activeCameraRef.current);
 
       const hits = raycaster.intersectObjects(furnitureGroup.children, true);
       if (hits.length > 0) {
-        // ✅ NEW — prioritaskan furniture non-carpet
         const solidHit = hits.find((h) => {
           const id = findFurnitureIdFromHit(h.object);
           const item = latestDataRef.current.furnitures.find(
@@ -300,7 +369,7 @@ export default function RoomViewport({
           (f) => f.id === hitId,
         );
         if (item) {
-          didHitObject = true; // ✅
+          didHitObject = true;
           if (onSelectFurnRef.current) {
             onSelectFurnRef.current(item.id);
           }
@@ -310,6 +379,7 @@ export default function RoomViewport({
           ) {
             draggingId = item.id;
             dragInitialPos = { x: item.x, z: item.z };
+            dragCurrentPos = { x: item.x, z: item.z };
             dragOffset = {
               x: item.x / 100 - planeHit.x,
               z: item.z / 100 - planeHit.z,
@@ -321,10 +391,9 @@ export default function RoomViewport({
             renderer.domElement.style.cursor = "grabbing";
           }
         }
-        return; // ✅ jangan cek wall element saat furniture ter-hit
+        return;
       }
 
-      // ✅ NEW — tidak ada furniture, cek wall element
       const wallElHits = raycaster.intersectObjects(
         Object.values(wallElementGroupsRef.current),
         true,
@@ -356,7 +425,6 @@ export default function RoomViewport({
           true,
         );
         if (hoverHits.length > 0) {
-          // ✅ NEW — solidHit / chosenHit untuk hover juga
           const solidHit = hoverHits.find((h) => {
             const id = findFurnitureIdFromHit(h.object);
             const item = latestDataRef.current.furnitures.find(
@@ -373,7 +441,6 @@ export default function RoomViewport({
             ? "not-allowed"
             : "grab";
         } else {
-          // ✅ NEW — hover wall element → cursor pointer
           const wallElHits = raycaster.intersectObjects(
             Object.values(wallElementGroupsRef.current),
             true,
@@ -404,21 +471,25 @@ export default function RoomViewport({
             ? snapFurniturePosition(candidate, list, r.width, r.length, 8)
             : clampFurnitureToRoom(candidate, r.width, r.length);
 
-        if (onMoveFurnRef.current) {
-          onMoveFurnRef.current(draggingId, finalPos.x, finalPos.z);
+        if (
+          finalPos.x !== dragCurrentPos.x ||
+          finalPos.z !== dragCurrentPos.z
+        ) {
+          dragCurrentPos = { x: finalPos.x, z: finalPos.z };
+          updateLiveDraggedMesh(item, finalPos.x, finalPos.z);
         }
       }
     };
 
     const handlePointerUp = () => {
       if (draggingId) {
-        const currentItem = latestDataRef.current.furnitures.find(
-          (f) => f.id === draggingId,
-        );
         const changed =
-          currentItem &&
-          (currentItem.x !== dragInitialPos.x ||
-            currentItem.z !== dragInitialPos.z);
+          dragCurrentPos.x !== dragInitialPos.x ||
+          dragCurrentPos.z !== dragInitialPos.z;
+
+        if (changed && onMoveFurnRef.current) {
+          onMoveFurnRef.current(draggingId, dragCurrentPos.x, dragCurrentPos.z);
+        }
 
         if (onDragEndRef.current) {
           onDragEndRef.current(Boolean(changed));
@@ -430,7 +501,6 @@ export default function RoomViewport({
         return;
       }
 
-      // ✅ NEW — klik ruang kosong: deselect furniture & wall element
       if (
         !didPointerMove &&
         !didHitObject &&
@@ -585,7 +655,7 @@ export default function RoomViewport({
 
     disposeGroupChildren(roomGroup);
     wallGroupsRef.current = {};
-    wallElementGroupsRef.current = {}; // ✅ NEW — reset container map
+    wallElementGroupsRef.current = {};
 
     if (!isRoomCreated) return;
 
@@ -640,7 +710,7 @@ export default function RoomViewport({
     ];
 
     const newWallGroups = {};
-    const newWallElementGroups = {}; // ✅ NEW
+    const newWallElementGroups = {};
 
     wallSpecs.forEach((spec) => {
       const wg = new THREE.Group();
@@ -824,7 +894,6 @@ export default function RoomViewport({
         wg.add(arcLine);
       }
 
-      // ✅ NEW — container untuk wall elements (di-child-kan ke wg)
       const elContainer = new THREE.Group();
       elContainer.name = `wallElements_${spec.id}`;
       elContainer.position.set(0, 0, 0);
@@ -836,15 +905,13 @@ export default function RoomViewport({
     });
 
     wallGroupsRef.current = newWallGroups;
-    wallElementGroupsRef.current = newWallElementGroups; // ✅ NEW
+    wallElementGroupsRef.current = newWallElementGroups;
   }, [isRoomCreated, room, walls, door]);
 
-  // ✅ NEW — Render Mesh Elemen Dinding
   useEffect(() => {
     const wallElGroups = wallElementGroupsRef.current;
     if (!wallElGroups) return;
 
-    // Bersihkan semua container
     Object.values(wallElGroups).forEach((container) => {
       disposeGroupChildren(container);
     });
@@ -882,49 +949,32 @@ export default function RoomViewport({
 
     disposeGroupChildren(fGroup);
     disposeGroupChildren(gGroup);
+    const nextMeshMap = new Map();
 
-    if (!isRoomCreated) return;
+    if (!isRoomCreated) {
+      furnitureMeshMapRef.current = nextMeshMap;
+      return;
+    }
 
     furnitures.forEach((item) => {
       const isSelected = item.id === selectedFurnitureId;
       const hasConflict = conflictIds.has(item.id);
       const meshGroup = buildFurnitureGroup(item, { isSelected, hasConflict });
       fGroup.add(meshGroup);
+      nextMeshMap.set(item.id, meshGroup);
     });
+
+    furnitureMeshMapRef.current = nextMeshMap;
 
     const selectedItem = furnitures.find((f) => f.id === selectedFurnitureId);
     if (selectedItem) {
-      const W = room.width / 100;
-      const L = room.length / 100;
-      const { minX, maxX, minZ, maxZ } = getFurnitureWorldAABB(selectedItem);
-      const midX = (minX + maxX) / 2;
-      const midZ = (minZ + maxZ) / 2;
-      const y = 0.007;
-
-      const points = [
-        new THREE.Vector3(minX, y, midZ),
-        new THREE.Vector3(-W / 2, y, midZ),
-        new THREE.Vector3(maxX, y, midZ),
-        new THREE.Vector3(W / 2, y, midZ),
-        new THREE.Vector3(midX, y, minZ),
-        new THREE.Vector3(midX, y, -L / 2),
-        new THREE.Vector3(midX, y, maxZ),
-        new THREE.Vector3(midX, y, L / 2),
-      ];
-
-      const guideColor = conflictIds.has(selectedItem.id)
-        ? "#ef4444"
-        : selectedItem.locked
-          ? "#f59e0b"
-          : "#2563eb";
-
-      const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-      const lineMat = new THREE.LineBasicMaterial({
-        color: guideColor,
-        transparent: true,
-        opacity: 0.75,
-      });
-      gGroup.add(new THREE.LineSegments(lineGeo, lineMat));
+      drawWallGuideLines(
+        gGroup,
+        selectedItem,
+        room.width,
+        room.length,
+        conflictIds.has(selectedItem.id),
+      );
     }
   }, [isRoomCreated, room, furnitures, selectedFurnitureId, conflictIds]);
 
