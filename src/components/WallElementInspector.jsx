@@ -189,7 +189,10 @@ export default function WallElementInspector({
             { id: "back", label: t.wallBack },
             { id: "left", label: t.wallLeft },
             { id: "right", label: t.wallRight },
-            { id: "front", label: "Depan*" },
+            {
+              id: "front",
+              label: t.wallFront || (lang === "en" ? "Front" : "Depan"),
+            },
           ].map((w) => (
             <button
               key={w.id}
@@ -296,7 +299,12 @@ export default function WallElementInspector({
           theme={theme}
           lang={lang}
           label={
-            element.type === "window" ? t.colorWindowFrame : t.colorOutletPlate
+            element.type === "window"
+              ? t.colorWindowFrame
+              : element.type === "ac"
+                ? t.colorACBody ||
+                  (lang === "en" ? "AC Body Color" : "Warna Bodi AC")
+                : t.colorOutletPlate
           }
           color={element.color1}
           onChange={(hex) => onUpdate(element.id, { color1: hex })}
@@ -305,7 +313,12 @@ export default function WallElementInspector({
           theme={theme}
           lang={lang}
           label={
-            element.type === "window" ? t.colorWindowGlass : t.colorOutletSocket
+            element.type === "window"
+              ? t.colorWindowGlass
+              : element.type === "ac"
+                ? t.colorACLouver ||
+                  (lang === "en" ? "Vent / Trim Color" : "Warna Kisi Angin")
+                : t.colorOutletSocket
           }
           color={element.color2}
           onChange={(hex) => onUpdate(element.id, { color2: hex })}

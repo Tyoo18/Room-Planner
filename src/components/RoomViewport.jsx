@@ -70,6 +70,7 @@ export default function RoomViewport({
   autoHideWalls,
   cameraCommand,
   onCameraManualMove,
+  onRegisterScreenshot,
   theme = "light",
   lang = "id",
 }) {
@@ -78,6 +79,7 @@ export default function RoomViewport({
 
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
+  const rendererRef = useRef(null);
   const perspCameraRef = useRef(null);
   const orthoCameraRef = useRef(null);
   const activeCameraRef = useRef(null);
@@ -162,12 +164,16 @@ export default function RoomViewport({
 
     activeCameraRef.current = perspCamera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true,
+    });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
     const ambientLight = new THREE.AmbientLight("#ffffff", 1.15);
     scene.add(ambientLight);
@@ -962,6 +968,24 @@ export default function RoomViewport({
 
     controls.update();
   }, [cameraCommand]);
+
+  useEffect(() => {
+    if (!onRegisterScreenshot) return;
+    onRegisterScreenshot(() => {
+      const renderer = rendererRef.current;
+      const scene = sceneRef.current;
+      const camera = activeCameraRef.current;
+      if (!renderer || !scene || !camera) return;
+
+      renderer.render(scene, camera);
+      const dataUrl = renderer.domElement.toDataURL("image/png");
+      const link = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 10);
+      link.download = `myroomplanner-${stamp}.png`;
+      link.href = dataUrl;
+      link.click();
+    });
+  }, [onRegisterScreenshot]);
 
   return (
     <div className="relative h-full w-full flex-1 overflow-hidden">

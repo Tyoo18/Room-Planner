@@ -89,6 +89,13 @@ export const TRANSLATIONS = {
     controlsHint2D:
       "2D Denah: Seret Furnitur • Shift+Arrow (10 cm) • Ctrl+Z Undo • [ / ] Ganti Layout",
 
+    // Export / Import / Screenshot
+    exportJson: "Export JSON",
+    importJson: "Import JSON",
+    screenshotPng: "Simpan Screenshot PNG",
+    importSuccess: "Layout JSON berhasil dimuat.",
+    importError: "File JSON tidak valid.",
+
     // Katalog & Inspector Furnitur
     catalogTitle: "Katalog Furnitur",
     catalogSubtitle: "Klik untuk taruh di kamar",
@@ -142,8 +149,10 @@ export const TRANSLATIONS = {
     outletDouble: "2 Lubang",
     outletSingle: "1 Lubang",
     outletSwitch: "Saklar + Stopkontak",
+    catAC: "AC Dinding",
 
     wallTargetLabel: "Terpasang di Tembok",
+    wallFront: "Depan",
     elevationTitle: "Tampak Depan Tembok (2D)",
     elevationHint:
       "Seret kotak di atas untuk atur posisi (tahan Alt untuk presisi 1 cm).",
@@ -155,6 +164,8 @@ export const TRANSLATIONS = {
     colorWindowGlass: "Warna Kaca",
     colorOutletPlate: "Warna Bingkai",
     colorOutletSocket: "Warna Modul",
+    colorACBody: "Warna Bodi AC",
+    colorACLouver: "Warna Kisi Angin",
     warnWallOverlap: "Bertumpuk dengan jendela/stopkontak lain di tembok ini.",
     warnWallDoorBlock: "Menabrak area pintu kamar.",
 
@@ -168,6 +179,22 @@ export const TRANSLATIONS = {
     chairStandard: "Standar",
     chairOffice: "Kursi Kerja",
     chairStool: "Stool",
+
+    // Partisi
+    catDivider: "Partisi",
+    dividerSolid: "Panel Polos",
+    dividerSlat: "Kisi-Kisi",
+    dividerFeetLabel: "Kaki Penyangga",
+    colorDividerPanel: "Warna Panel / Bilah",
+    colorDividerFrame: "Warna Rangka & Kaki",
+
+    // Sofa & Beanbag
+    catSofa: "Sofa",
+    sofaMinimal: "Sofa Minimalis",
+    sofaBeanbag: "Beanbag",
+    colorSofaMain: "Warna Utama Kain",
+    colorSofaAccent: "Warna Bantal & Kaki",
+    colorBeanbagAccent: "Warna Aksen Atas",
 
     backToRoom: "Kamar",
     lockItem: "Kunci",
@@ -316,6 +343,13 @@ export const TRANSLATIONS = {
     controlsHint2D:
       "2D Plan: Drag Furniture • Shift+Arrow (10 cm) • Ctrl+Z Undo • [ / ] Switch Layout",
 
+    // Export / Import / Screenshot
+    exportJson: "Export JSON",
+    importJson: "Import JSON",
+    screenshotPng: "Save PNG Screenshot",
+    importSuccess: "JSON layout loaded.",
+    importError: "Invalid JSON file.",
+
     // Furniture Catalog & Inspector
     catalogTitle: "Furniture Catalog",
     catalogSubtitle: "Click to place in room",
@@ -369,8 +403,10 @@ export const TRANSLATIONS = {
     outletDouble: "Double Socket",
     outletSingle: "Single Socket",
     outletSwitch: "Switch + Socket",
+    catAC: "Wall AC",
 
     wallTargetLabel: "Mounted on Wall",
+    wallFront: "Front",
     elevationTitle: "Wall Elevation (2D)",
     elevationHint:
       "Drag the box above to position (hold Alt for 1 cm precision).",
@@ -382,6 +418,8 @@ export const TRANSLATIONS = {
     colorWindowGlass: "Glass Tint",
     colorOutletPlate: "Plate Color",
     colorOutletSocket: "Socket Module",
+    colorACBody: "AC Body Color",
+    colorACLouver: "Vent / Trim Color",
     warnWallOverlap: "Overlaps another window/outlet on this wall.",
     warnWallDoorBlock: "Clashes with the room door area.",
 
@@ -395,6 +433,22 @@ export const TRANSLATIONS = {
     chairStandard: "Standard",
     chairOffice: "Office Chair",
     chairStool: "Stool",
+
+    // Divider
+    catDivider: "Room Divider",
+    dividerSolid: "Solid Panel",
+    dividerSlat: "Slat Screen",
+    dividerFeetLabel: "Support Feet",
+    colorDividerPanel: "Panel / Slat Color",
+    colorDividerFrame: "Frame & Feet Color",
+
+    // Sofa & Beanbag
+    catSofa: "Sofa",
+    sofaMinimal: "Minimalist Sofa",
+    sofaBeanbag: "Beanbag",
+    colorSofaMain: "Main Fabric Color",
+    colorSofaAccent: "Pillows & Legs Color",
+    colorBeanbagAccent: "Top Cushion Color",
 
     backToRoom: "Room",
     lockItem: "Lock",

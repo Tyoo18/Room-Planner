@@ -25,6 +25,9 @@ import {
   FolderOpen,
   Pencil,
   Check,
+  Download,
+  Upload,
+  Camera,
 } from "lucide-react";
 import ColorPicker from "./ColorPicker";
 import WallElementInspector from "./WallElementInspector";
@@ -40,6 +43,9 @@ export default function ControlPanel({
   onCreateNewSlot,
   onRenameSlot,
   onDeleteSlot,
+  onExportJson,
+  onImportJson,
+  onScreenshot,
   canUndo = false,
   canRedo = false,
   onUndo,
@@ -118,6 +124,8 @@ export default function ControlPanel({
   const [isResizing, setIsResizing] = useState(false);
 
   const paintSectionRef = useRef(null);
+  const importFileInputRef = useRef(null);
+  const [ioNotice, setIoNotice] = useState(null);
 
   const activeSlot = slots.find((s) => s.id === activeSlotId) || slots[0];
 
@@ -289,9 +297,15 @@ export default function ControlPanel({
       return;
 
     const numVal = Number(cleaned);
+    const minDepth = selectedFurniture.type === "divider" ? 3 : 20;
+
     if (field === "width" && numVal >= 20 && numVal <= frontWidthCm) {
       onUpdateFurniture(selectedFurniture.id, { width: numVal }, false);
-    } else if (field === "depth" && numVal >= 20 && numVal <= sideLengthCm) {
+    } else if (
+      field === "depth" &&
+      numVal >= minDepth &&
+      numVal <= sideLengthCm
+    ) {
       onUpdateFurniture(selectedFurniture.id, { depth: numVal }, false);
     } else if (field === "height" && numVal >= 10 && numVal <= room.t) {
       onUpdateFurniture(selectedFurniture.id, { height: numVal }, false);
@@ -320,8 +334,13 @@ export default function ControlPanel({
       setFurnInputs((prev) => ({ ...prev, width: String(valid) }));
       onUpdateFurniture(selectedFurniture.id, { width: valid }, false);
     } else if (field === "depth") {
+      const isDivider = selectedFurniture.type === "divider";
+      const minDepth = isDivider ? 3 : 20;
+      const fallbackDepth = isDivider ? 8 : 30;
       const valid =
-        !furnInputs.depth || numVal < 20 ? 30 : Math.min(sideLengthCm, numVal);
+        !furnInputs.depth || numVal < minDepth
+          ? fallbackDepth
+          : Math.min(sideLengthCm, numVal);
       setFurnInputs((prev) => ({ ...prev, depth: String(valid) }));
       onUpdateFurniture(selectedFurniture.id, { depth: valid }, false);
     } else if (field === "height") {
@@ -764,50 +783,125 @@ export default function ControlPanel({
               )}
             </div>
           )}
+
+          {/* Export & Import JSON Backup */}
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={onExportJson}
+              className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                isDark
+                  ? "border-zinc-700 bg-zinc-800/80 text-zinc-200 hover:border-blue-500 hover:text-blue-300"
+                  : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:border-blue-600 hover:text-blue-700"
+              }`}
+            >
+              <Download className="h-3 w-3 shrink-0" />
+              <span className="truncate">{t.exportJson || "Export JSON"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => importFileInputRef.current?.click()}
+              className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                isDark
+                  ? "border-zinc-700 bg-zinc-800/80 text-zinc-200 hover:border-blue-500 hover:text-blue-300"
+                  : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:border-blue-600 hover:text-blue-700"
+              }`}
+            >
+              <Upload className="h-3 w-3 shrink-0" />
+              <span className="truncate">{t.importJson || "Import JSON"}</span>
+            </button>
+
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file || !onImportJson) return;
+                const ok = await onImportJson(file);
+                setIoNotice(ok ? "success" : "error");
+                setTimeout(() => setIoNotice(null), 3000);
+              }}
+            />
+          </div>
+
+          {ioNotice && (
+            <p
+              className={`mt-1.5 text-[11px] font-medium ${
+                ioNotice === "success" ? "text-emerald-500" : "text-red-500"
+              }`}
+            >
+              {ioNotice === "success"
+                ? t.importSuccess || "Layout JSON berhasil dimuat."
+                : t.importError || "File JSON tidak valid."}
+            </p>
+          )}
         </section>
 
         {/* TAMPILAN 3D / 2D DENAH, SNAP & KAMERA */}
         <section className={cardClass}>
-          <div className="mb-2.5 flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold">{t.viewAndCamera}</span>
+          <div className="mb-2.5 flex items-center justify-between gap-1.5">
+            <span className="truncate text-xs font-semibold">
+              {t.viewAndCamera}
+            </span>
 
-            <div
-              className={`flex rounded-lg border p-0.5 text-[11px] font-semibold ${
-                isDark
-                  ? "border-zinc-700 bg-zinc-950"
-                  : "border-zinc-300 bg-zinc-100"
-              }`}
-            >
+            <div className="flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
                 disabled={!isRoomCreated}
-                onClick={() => setViewMode("3d")}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 transition disabled:opacity-40 ${
-                  viewMode === "3d"
-                    ? "bg-blue-600 text-white shadow-2xs"
-                    : isDark
-                      ? "text-zinc-400 hover:text-zinc-200"
-                      : "text-zinc-600 hover:text-zinc-900"
+                onClick={onScreenshot}
+                title={t.screenshotPng || "Screenshot PNG"}
+                className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition disabled:opacity-40 ${
+                  isDark
+                    ? "border-zinc-700 bg-zinc-800 text-zinc-200 hover:border-blue-500 hover:text-blue-300"
+                    : "border-zinc-300 bg-white text-zinc-700 shadow-2xs hover:border-blue-600 hover:text-blue-700"
                 }`}
               >
-                <Box className="h-3 w-3" />
-                <span>{t.mode3D}</span>
+                <Camera className="h-3 w-3 shrink-0" />
+                <span>PNG</span>
               </button>
-              <button
-                type="button"
-                disabled={!isRoomCreated}
-                onClick={() => setViewMode("2d")}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 transition disabled:opacity-40 ${
-                  viewMode === "2d"
-                    ? "bg-blue-600 text-white shadow-2xs"
-                    : isDark
-                      ? "text-zinc-400 hover:text-zinc-200"
-                      : "text-zinc-600 hover:text-zinc-900"
+
+              <div
+                className={`flex rounded-lg border p-0.5 text-[11px] font-semibold ${
+                  isDark
+                    ? "border-zinc-700 bg-zinc-950"
+                    : "border-zinc-300 bg-zinc-100"
                 }`}
               >
-                <Grid className="h-3 w-3" />
-                <span>{t.mode2D}</span>
-              </button>
+                <button
+                  type="button"
+                  disabled={!isRoomCreated}
+                  onClick={() => setViewMode("3d")}
+                  className={`flex items-center gap-1 rounded-md px-2 py-1 transition disabled:opacity-40 ${
+                    viewMode === "3d"
+                      ? "bg-blue-600 text-white shadow-2xs"
+                      : isDark
+                        ? "text-zinc-400 hover:text-zinc-200"
+                        : "text-zinc-600 hover:text-zinc-900"
+                  }`}
+                >
+                  <Box className="h-3 w-3" />
+                  <span>{t.mode3D}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!isRoomCreated}
+                  onClick={() => setViewMode("2d")}
+                  className={`flex items-center gap-1 rounded-md px-2 py-1 transition disabled:opacity-40 ${
+                    viewMode === "2d"
+                      ? "bg-blue-600 text-white shadow-2xs"
+                      : isDark
+                        ? "text-zinc-400 hover:text-zinc-200"
+                        : "text-zinc-600 hover:text-zinc-900"
+                  }`}
+                >
+                  <Grid className="h-3 w-3" />
+                  <span>{t.mode2D}</span>
+                </button>
+              </div>
             </div>
           </div>
 

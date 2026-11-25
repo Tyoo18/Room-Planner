@@ -1,10 +1,13 @@
 import * as THREE from "three";
 import {
+  isEllipticalFurniture,
   getFurnitureWorldAABB,
   clampFurnitureToRoom,
   snapFurniturePosition,
   getWallDistancesCm,
   testOBBOverlap,
+  testEllipseOBBOverlap,
+  testEllipseEllipseOverlap,
 } from "./helpers";
 import { bedModule } from "./bed";
 import { deskModule, getLDeskDimensionsM } from "./desk";
@@ -12,6 +15,8 @@ import { chairModule } from "./chair";
 import { wardrobeModule } from "./wardrobe";
 import { shelfModule } from "./shelf";
 import { carpetModule } from "./carpet";
+import { dividerModule } from "./divider";
+import { sofaModule } from "./sofa";
 
 export {
   getLDeskDimensionsM,
@@ -28,13 +33,19 @@ export const FURNITURE_REGISTRY = {
   wardrobe: wardrobeModule,
   shelf: shelfModule,
   carpet: carpetModule,
+  divider: dividerModule,
+  sofa: sofaModule,
 };
 
 export const ROOM_ZONES = [
   { id: "sleep", titleKey: "zoneSleep", types: ["bed"] },
-  { id: "work", titleKey: "zoneWork", types: ["desk", "chair"] },
+  { id: "work", titleKey: "zoneWork", types: ["desk", "chair", "sofa"] },
   { id: "storage", titleKey: "zoneStorage", types: ["wardrobe", "shelf"] },
-  { id: "floorDecor", titleKey: "zoneFloorDecor", types: ["carpet"] },
+  {
+    id: "floorDecor",
+    titleKey: "zoneFloorDecor",
+    types: ["carpet", "divider"],
+  },
 ];
 
 export function createDefaultFurniture(type, variant = {}) {
@@ -73,6 +84,7 @@ function getWorldOrientedBoxes(item) {
   const sin = Math.sin(rad);
   const ix = item.x / 100;
   const iz = item.z / 100;
+  const isElliptical = isEllipticalFurniture(item);
 
   return getFurnitureLocalBoxes(item).map((box) => {
     const wx = ix + (box.cx * cos + box.cz * sin);
@@ -84,8 +96,22 @@ function getWorldOrientedBoxes(item) {
       halfD: box.d / 2,
       cos,
       sin,
+      isElliptical,
     };
   });
+}
+
+function testShapeOverlap(shapeA, shapeB) {
+  if (shapeA.isElliptical && shapeB.isElliptical) {
+    return testEllipseEllipseOverlap(shapeA, shapeB);
+  }
+  if (shapeA.isElliptical && !shapeB.isElliptical) {
+    return testEllipseOBBOverlap(shapeA, shapeB);
+  }
+  if (!shapeA.isElliptical && shapeB.isElliptical) {
+    return testEllipseOBBOverlap(shapeB, shapeA);
+  }
+  return testOBBOverlap(shapeA, shapeB);
 }
 
 export function checkFurnitureConflicts(
@@ -111,7 +137,7 @@ export function checkFurnitureConflicts(
     const boxesB = getWorldOrientedBoxes(other);
     for (const bA of boxesA) {
       for (const bB of boxesB) {
-        if (testOBBOverlap(bA, bB)) {
+        if (testShapeOverlap(bA, bB)) {
           hasOverlap = true;
           break;
         }
@@ -139,6 +165,7 @@ export function checkFurnitureConflicts(
     const hingeWorldX = -hingeLocalX;
     const hingeWorldZ = L / 2 - 0.02;
     const swingRadius = Math.max(0.2, dW - frameThick * 2);
+    const safeRadiusSq = (swingRadius - 0.02) * (swingRadius - 0.02);
 
     for (const box of boxesA) {
       const relX = hingeWorldX - box.cx;
@@ -146,16 +173,39 @@ export function checkFurnitureConflicts(
       const localX = relX * box.cos - relZ * box.sin;
       const localZ = relX * box.sin + relZ * box.cos;
 
-      const clampedX = Math.max(-box.halfW, Math.min(box.halfW, localX));
-      const clampedZ = Math.max(-box.halfD, Math.min(box.halfD, localZ));
+      if (box.isElliptical) {
+        const norm =
+          (localX * localX) / (box.halfW * box.halfW) +
+          (localZ * localZ) / (box.halfD * box.halfD);
+        if (norm <= 1) {
+          hasDoorBlock = true;
+          break;
+        }
+        let minDistSq = Infinity;
+        const segs = 32;
+        for (let i = 0; i < segs; i++) {
+          const phi = (i / segs) * Math.PI * 2;
+          const ex = box.halfW * Math.cos(phi);
+          const ez = box.halfD * Math.sin(phi);
+          const dSq = (localX - ex) ** 2 + (localZ - ez) ** 2;
+          if (dSq < minDistSq) minDistSq = dSq;
+        }
+        if (minDistSq < safeRadiusSq) {
+          hasDoorBlock = true;
+          break;
+        }
+      } else {
+        const clampedX = Math.max(-box.halfW, Math.min(box.halfW, localX));
+        const clampedZ = Math.max(-box.halfD, Math.min(box.halfD, localZ));
 
-      const distX = localX - clampedX;
-      const distZ = localZ - clampedZ;
-      const distSq = distX * distX + distZ * distZ;
+        const distX = localX - clampedX;
+        const distZ = localZ - clampedZ;
+        const distSq = distX * distX + distZ * distZ;
 
-      if (distSq < (swingRadius - 0.02) * (swingRadius - 0.02)) {
-        hasDoorBlock = true;
-        break;
+        if (distSq < safeRadiusSq) {
+          hasDoorBlock = true;
+          break;
+        }
       }
     }
   }
@@ -198,18 +248,43 @@ export function buildFurnitureGroup(
       : item.locked
         ? "#f59e0b"
         : "#2563eb";
+    const elliptical = isEllipticalFurniture(item);
+
     boxes.forEach((b) => {
       const pad = 0.025;
-      const rectGeo = new THREE.EdgesGeometry(
-        new THREE.PlaneGeometry(b.w + pad * 2, b.d + pad * 2),
-      );
-      const line = new THREE.LineSegments(
-        rectGeo,
-        new THREE.LineBasicMaterial({ color: outlineColor }),
-      );
-      line.rotation.x = -Math.PI / 2;
-      line.position.set(b.cx, 0.006, b.cz);
-      group.add(line);
+      if (elliptical) {
+        const rx = b.w / 2 + pad;
+        const rz = b.d / 2 + pad;
+        const pts = [];
+        const segs = 48;
+        for (let i = 0; i < segs; i++) {
+          const theta = (i / segs) * Math.PI * 2;
+          pts.push(
+            new THREE.Vector3(
+              b.cx + Math.cos(theta) * rx,
+              0.006,
+              b.cz + Math.sin(theta) * rz,
+            ),
+          );
+        }
+        const loopGeo = new THREE.BufferGeometry().setFromPoints(pts);
+        const loopLine = new THREE.LineLoop(
+          loopGeo,
+          new THREE.LineBasicMaterial({ color: outlineColor }),
+        );
+        group.add(loopLine);
+      } else {
+        const rectGeo = new THREE.EdgesGeometry(
+          new THREE.PlaneGeometry(b.w + pad * 2, b.d + pad * 2),
+        );
+        const line = new THREE.LineSegments(
+          rectGeo,
+          new THREE.LineBasicMaterial({ color: outlineColor }),
+        );
+        line.rotation.x = -Math.PI / 2;
+        line.position.set(b.cx, 0.006, b.cz);
+        group.add(line);
+      }
     });
   }
 

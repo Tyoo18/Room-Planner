@@ -1,5 +1,14 @@
 import * as THREE from "three";
 
+export function isEllipticalFurniture(item) {
+  if (!item) return false;
+  if (item.type === "sofa" && item.sofaStyle === "beanbag") return true;
+  if (item.type === "carpet" && item.carpetShape === "round") return true;
+  if (item.type === "desk" && item.deskShape === "round") return true;
+  if (item.type === "chair" && item.chairStyle === "stool") return true;
+  return false;
+}
+
 export function createRoundedBoxGeometry(
   width,
   height,
@@ -58,8 +67,14 @@ export function getFurnitureWorldAABB(item) {
 
   const w = item.width / 100;
   const d = item.depth / 100;
-  const rotW = w * cos + d * sin;
-  const rotD = w * sin + d * cos;
+
+  // Untuk objek bulat/oval, gunakan proyeksi elips sejati agar tidak melar saat diputar
+  const rotW = isEllipticalFurniture(item)
+    ? Math.hypot(w * cos, d * sin)
+    : w * cos + d * sin;
+  const rotD = isEllipticalFurniture(item)
+    ? Math.hypot(w * sin, d * cos)
+    : w * sin + d * cos;
 
   const cx = item.x / 100;
   const cz = item.z / 100;
@@ -195,4 +210,82 @@ export function testOBBOverlap(a, b) {
     }
   }
   return true;
+}
+
+function isPointInEllipse(wx, wz, ell, margin = 0.005) {
+  const rx = wx - ell.cx;
+  const rz = wz - ell.cz;
+  const lx = rx * ell.cos - rz * ell.sin;
+  const lz = rx * ell.sin + rz * ell.cos;
+  const a = Math.max(0.01, ell.halfW - margin);
+  const b = Math.max(0.01, ell.halfD - margin);
+  return (lx * lx) / (a * a) + (lz * lz) / (b * b) < 1;
+}
+
+function isPointInOBB(wx, wz, box, margin = 0.005) {
+  const rx = wx - box.cx;
+  const rz = wz - box.cz;
+  const lx = rx * box.cos - rz * box.sin;
+  const lz = rx * box.sin + rz * box.cos;
+  return Math.abs(lx) < box.halfW - margin && Math.abs(lz) < box.halfD - margin;
+}
+
+export function testEllipseOBBOverlap(ell, box) {
+  const margin = 0.005;
+  if (isPointInOBB(ell.cx, ell.cz, box, margin)) return true;
+  if (isPointInEllipse(box.cx, box.cz, ell, margin)) return true;
+
+  // Cek 24 titik keliling elips terhadap kotak OBB
+  const steps = 24;
+  for (let i = 0; i < steps; i++) {
+    const phi = (i / steps) * Math.PI * 2;
+    const lx = ell.halfW * Math.cos(phi);
+    const lz = ell.halfD * Math.sin(phi);
+    const wx = ell.cx + (lx * ell.cos + lz * ell.sin);
+    const wz = ell.cz + (-lx * ell.sin + lz * ell.cos);
+    if (isPointInOBB(wx, wz, box, margin)) return true;
+  }
+
+  // Cek 4 sudut & 4 titik tengah sisi OBB terhadap elips
+  const boxSamples = [
+    [-box.halfW, -box.halfD],
+    [box.halfW, -box.halfD],
+    [box.halfW, box.halfD],
+    [-box.halfW, box.halfD],
+    [0, -box.halfD],
+    [0, box.halfD],
+    [-box.halfW, 0],
+    [box.halfW, 0],
+  ];
+  for (const [bx, bz] of boxSamples) {
+    const wx = box.cx + (bx * box.cos + bz * box.sin);
+    const wz = box.cz + (-bx * box.sin + bz * box.cos);
+    if (isPointInEllipse(wx, wz, ell, margin)) return true;
+  }
+
+  return false;
+}
+
+export function testEllipseEllipseOverlap(ellA, ellB) {
+  const margin = 0.005;
+  if (isPointInEllipse(ellA.cx, ellA.cz, ellB, margin)) return true;
+  if (isPointInEllipse(ellB.cx, ellB.cz, ellA, margin)) return true;
+
+  const steps = 24;
+  for (let i = 0; i < steps; i++) {
+    const phi = (i / steps) * Math.PI * 2;
+    const lxA = ellA.halfW * Math.cos(phi);
+    const lzA = ellA.halfD * Math.sin(phi);
+    const wxA = ellA.cx + (lxA * ellA.cos + lzA * ellA.sin);
+    const wzA = ellA.cz + (-lxA * ellA.sin + lzA * ellA.cos);
+    if (isPointInEllipse(wxA, wzA, ellB, margin)) return true;
+
+    const lxB = ellB.halfW * Math.cos(phi);
+    const lzB = ellB.halfD * Math.sin(phi);
+    const wxB = ellB.cx + (lxB * ellB.cos + lzB * ellB.sin);
+    const wzB = ellB.cz + (-lxB * ellB.sin + lzB * ellB.cos);
+    if (isPointInEllipse(wxB, wzB, ellA, margin)) return true;
+  }
+
+  return false;
 }

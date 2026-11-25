@@ -154,6 +154,21 @@ export default function FurnitureCatalog({
               },
             ],
           },
+          {
+            type: "sofa",
+            title: t.catSofa || (lang === "en" ? "Sofa & Lounge" : "Sofa"),
+            variants: [
+              {
+                label:
+                  t.sofaMinimal || (lang === "en" ? "Minimalist" : "Minimalis"),
+                patch: { sofaStyle: "sofa" },
+              },
+              {
+                label: t.sofaBeanbag || "Beanbag",
+                patch: { sofaStyle: "beanbag" },
+              },
+            ],
+          },
         ],
       },
       {
@@ -220,6 +235,24 @@ export default function FurnitureCatalog({
               },
             ],
           },
+          {
+            type: "divider",
+            title: t.catDivider || (lang === "en" ? "Room Divider" : "Partisi"),
+            variants: [
+              {
+                label:
+                  t.dividerSolid ||
+                  (lang === "en" ? "Solid Panel" : "Panel Polos"),
+                patch: { dividerStyle: "solid" },
+              },
+              {
+                label:
+                  t.dividerSlat ||
+                  (lang === "en" ? "Slat Screen" : "Kisi-Kisi"),
+                patch: { dividerStyle: "slat" },
+              },
+            ],
+          },
         ],
       },
       {
@@ -272,6 +305,17 @@ export default function FurnitureCatalog({
                   t.outletSwitch ||
                   (lang === "en" ? "Switch + Socket" : "Saklar + Kontak"),
                 patch: { outletStyle: "switch" },
+              },
+            ],
+          },
+          {
+            type: "ac",
+            title: t.catAC || (lang === "en" ? "Wall AC" : "AC Dinding"),
+            isWallElement: true,
+            variants: [
+              {
+                label: t.catAC || (lang === "en" ? "Wall AC" : "AC Dinding"),
+                patch: {},
               },
             ],
           },

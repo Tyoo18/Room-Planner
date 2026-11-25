@@ -501,5 +501,156 @@ export function AssetThumbnail({ type, patch = {}, isDark }) {
     );
   }
 
+  // 9. AC DINDING
+  if (type === "ac") {
+    return (
+      <svg viewBox="0 0 80 56" className="h-11 w-16">
+        <rect
+          x="14"
+          y="15"
+          width="52"
+          height="18"
+          rx="4"
+          fill={softFill}
+          stroke={stroke}
+          strokeWidth="1.8"
+        />
+        <line
+          x1="20"
+          y1="28"
+          x2="60"
+          y2="28"
+          stroke={accentFill}
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M26 37 Q24 41 26 44 M40 37 Q38 41 40 44 M54 37 Q52 41 54 44"
+          fill="none"
+          stroke={accentFill}
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+
+  // 10. PARTISI / PEMBATAS KAMAR
+  if (type === "divider") {
+    const isSlat = patch.dividerStyle === "slat";
+    return (
+      <svg viewBox="0 0 80 56" className="h-11 w-16">
+        {/* Kaki penyangga */}
+        <line
+          x1="22"
+          y1="18"
+          x2="22"
+          y2="38"
+          stroke={stroke}
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <line
+          x1="58"
+          y1="18"
+          x2="58"
+          y2="38"
+          stroke={stroke}
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        {/* Badan partisi */}
+        <rect
+          x="14"
+          y="24"
+          width="52"
+          height="8"
+          rx="2"
+          fill={isSlat ? "none" : mutedFill}
+          stroke={stroke}
+          strokeWidth="1.8"
+        />
+        {isSlat &&
+          [22, 30, 38, 46, 54].map((xPos) => (
+            <circle key={xPos} cx={xPos} cy="28" r="2.2" fill={accentFill} />
+          ))}
+      </svg>
+    );
+  }
+
+  // 11. SOFA & BEANBAG
+  if (type === "sofa") {
+    if (patch.sofaStyle === "beanbag") {
+      return (
+        <svg viewBox="0 0 80 56" className="h-11 w-16">
+          <circle
+            cx="40"
+            cy="29"
+            r="16"
+            fill={mutedFill}
+            stroke={stroke}
+            strokeWidth="1.8"
+          />
+          <path
+            d="M27 22 Q40 15 53 22"
+            fill="none"
+            stroke={accentFill}
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+    }
+    return (
+      <svg viewBox="0 0 80 56" className="h-11 w-16">
+        <rect
+          x="14"
+          y="14"
+          width="52"
+          height="28"
+          rx="4"
+          fill={mutedFill}
+          stroke={stroke}
+          strokeWidth="1.8"
+        />
+        {/* Sandaran belakang & tangan */}
+        <rect
+          x="14"
+          y="14"
+          width="52"
+          height="8"
+          rx="2"
+          fill={softFill}
+          stroke={stroke}
+          strokeWidth="1.5"
+        />
+        <line
+          x1="21"
+          y1="22"
+          x2="21"
+          y2="42"
+          stroke={stroke}
+          strokeWidth="1.5"
+        />
+        <line
+          x1="59"
+          y1="22"
+          x2="59"
+          y2="42"
+          stroke={stroke}
+          strokeWidth="1.5"
+        />
+        <line
+          x1="40"
+          y1="22"
+          x2="40"
+          y2="42"
+          stroke={stroke}
+          strokeWidth="1.3"
+        />
+      </svg>
+    );
+  }
+
   return null;
 }

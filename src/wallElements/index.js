@@ -7,6 +7,21 @@ export function getWallWidthCm(wallId, frontWidthCm, sideLengthCm) {
 export function createDefaultWallElement(type, variant = {}) {
   const id = `we_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
+  if (type === "ac") {
+    return {
+      id,
+      type: "ac",
+      wall: "back",
+      locked: false,
+      offsetCm: 60,
+      elevationCm: 215,
+      width: 85,
+      height: 28,
+      color1: "#F8FAFC",
+      color2: "#1E293B",
+    };
+  }
+
   if (type === "outlet") {
     const outletStyle = variant.outletStyle || "double";
     return {
@@ -42,6 +57,9 @@ export function createDefaultWallElement(type, variant = {}) {
 }
 
 export function getWallElementLabel(el, t) {
+  if (el.type === "ac") {
+    return t.catAC || "AC Dinding";
+  }
   if (el.type === "outlet") {
     const sub =
       el.outletStyle === "single"
@@ -81,7 +99,6 @@ export function getDoorRectOnFrontWall(door, frontWidthCm, roomHeightCm) {
   const dH = Math.min(door.height, roomHeightCm - 5);
   const maxOffset = Math.max(0, frontWidthCm - dW);
   const offset = Math.min(door.offset, maxOffset);
-  // Konversi ke jarak dari sisi kiri saat menghadap tembok depan dari dalam
   const leftCm = frontWidthCm - offset - dW;
   return { leftCm, rightCm: leftCm + dW, bottomCm: 0, topCm: dH };
 }
@@ -146,7 +163,7 @@ export function buildWallElementGroup(
 
   const matPrimary = new THREE.MeshStandardMaterial({
     color: el.color1 || "#ffffff",
-    roughness: 0.55,
+    roughness: 0.5,
     metalness: 0.08,
   });
 
@@ -156,11 +173,35 @@ export function buildWallElementGroup(
     metalness: el.type === "window" ? 0.1 : 0.3,
   });
 
-  if (el.type === "window") {
+  let outlineZ = 0.032;
+
+  if (el.type === "ac") {
+    const acD = 0.21;
+    outlineZ = acD + 0.012;
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, acD), matPrimary);
+    body.position.set(0, 0, acD / 2);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+
+    const louver = new THREE.Mesh(
+      new THREE.BoxGeometry(w * 0.88, h * 0.16, 0.02),
+      matSecondary,
+    );
+    louver.position.set(0, -h * 0.34, acD - 0.004);
+    group.add(louver);
+
+    const trim = new THREE.Mesh(
+      new THREE.BoxGeometry(w * 0.96, 0.008, 0.008),
+      matSecondary,
+    );
+    trim.position.set(0, -h * 0.12, acD + 0.002);
+    group.add(trim);
+  } else if (el.type === "window") {
     const frameD = 0.026;
     const barT = Math.min(0.04, w * 0.12, h * 0.12);
 
-    // Kusen luar 4 sisi
     const topBar = new THREE.Mesh(
       new THREE.BoxGeometry(w, barT, frameD),
       matPrimary,
@@ -183,7 +224,6 @@ export function buildWallElementGroup(
     rightBar.position.set(w / 2 - barT / 2, 0, frameD / 2);
     group.add(topBar, botBar, leftBar, rightBar);
 
-    // Kaca jendela
     const glass = new THREE.Mesh(
       new THREE.PlaneGeometry(
         Math.max(0.05, w - barT * 1.6),
@@ -194,7 +234,6 @@ export function buildWallElementGroup(
     glass.position.set(0, 0, frameD * 0.45);
     group.add(glass);
 
-    // Tiang tengah untuk jendela 2 daun
     if ((el.windowStyle || "double") === "double") {
       const mullion = new THREE.Mesh(
         new THREE.BoxGeometry(barT * 0.85, h - barT * 2, frameD * 0.9),
@@ -204,7 +243,6 @@ export function buildWallElementGroup(
       group.add(mullion);
     }
   } else {
-    // Stopkontak / Saklar
     const plateD = 0.012;
     const plate = new THREE.Mesh(
       new THREE.BoxGeometry(w, h, plateD),
@@ -248,7 +286,7 @@ export function buildWallElementGroup(
       edges,
       new THREE.LineBasicMaterial({ color: outlineColor }),
     );
-    line.position.set(0, 0, 0.032);
+    line.position.set(0, 0, outlineZ);
     group.add(line);
   }
 

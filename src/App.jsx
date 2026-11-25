@@ -136,6 +136,8 @@ export default function App() {
     wallElementsRef.current = wallElements;
   }, [wallElements]);
 
+  const captureScreenshotRef = useRef(null);
+
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [viewMode, setViewMode] = useState("3d");
   const [autoHideWalls, setAutoHideWalls] = useState(true);
@@ -362,6 +364,91 @@ export default function App() {
       setSelectedWallElementId(null);
       setPast([]);
       setFuture([]);
+    }
+  };
+
+  const handleExportJson = () => {
+    const syncedSlots = slots.map((slot) =>
+      slot.id === activeSlotId
+        ? {
+            ...slot,
+            isRoomCreated,
+            room,
+            walls,
+            door,
+            furnitures,
+            wallElements,
+          }
+        : slot,
+    );
+
+    const payload = {
+      app: "MyRoomPlanner",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      activeSlotId,
+      slots: syncedSlots,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.download = `myroomplanner-backup-${stamp}.json`;
+    link.href = url;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportJson = async (file) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed?.slots) || parsed.slots.length === 0) {
+        return false;
+      }
+
+      const normalizedSlots = parsed.slots.map((s, idx) => ({
+        id:
+          typeof s.id === "string" && s.id ? s.id : `slot_${Date.now()}_${idx}`,
+        name:
+          typeof s.name === "string" && s.name ? s.name : `Layout ${idx + 1}`,
+        isRoomCreated: Boolean(s.isRoomCreated),
+        room: { ...DEFAULT_ROOM, ...(s.room || {}) },
+        walls: s.walls
+          ? {
+              front: { ...DEFAULT_WALLS.front, ...s.walls.front },
+              back: { ...DEFAULT_WALLS.back, ...s.walls.back },
+              left: { ...DEFAULT_WALLS.left, ...s.walls.left },
+              right: { ...DEFAULT_WALLS.right, ...s.walls.right },
+            }
+          : JSON.parse(JSON.stringify(DEFAULT_WALLS)),
+        door: { ...DEFAULT_DOOR, ...(s.door || {}) },
+        furnitures: Array.isArray(s.furnitures) ? s.furnitures : [],
+        wallElements: Array.isArray(s.wallElements) ? s.wallElements : [],
+      }));
+
+      const targetSlot =
+        normalizedSlots.find((s) => s.id === parsed.activeSlotId) ||
+        normalizedSlots[0];
+
+      setSlots(normalizedSlots);
+      setActiveSlotId(targetSlot.id);
+      setIsRoomCreated(Boolean(targetSlot.isRoomCreated));
+      setRoom(targetSlot.room);
+      setWalls(targetSlot.walls);
+      setDoor(targetSlot.door);
+      setFurnitures(targetSlot.furnitures);
+      setWallElements(targetSlot.wallElements);
+      setSelectedFurnitureId(null);
+      setSelectedWallElementId(null);
+      setPast([]);
+      setFuture([]);
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -719,6 +806,35 @@ export default function App() {
 
       // Shortcut saat Elemen Dinding terpilih
       if (selectedWallElement) {
+        if (
+          ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
+        ) {
+          e.preventDefault();
+          if (selectedWallElement.locked) return;
+
+          if (!e.repeat) {
+            pushHistorySnapshot(getCurrentSnapshot());
+          }
+
+          const step = e.shiftKey ? 10 : 1;
+          let dOffset = 0;
+          let dElev = 0;
+          if (e.key === "ArrowLeft") dOffset = -step;
+          if (e.key === "ArrowRight") dOffset = step;
+          if (e.key === "ArrowUp") dElev = step;
+          if (e.key === "ArrowDown") dElev = -step;
+
+          handleUpdateWallElement(
+            selectedWallElement.id,
+            {
+              offsetCm: selectedWallElement.offsetCm + dOffset,
+              elevationCm: selectedWallElement.elevationCm + dElev,
+            },
+            false,
+          );
+          return;
+        }
+
         if (e.key === "l" || e.key === "L") {
           handleToggleLockWallElement(selectedWallElement.id);
         } else if (
@@ -800,6 +916,7 @@ export default function App() {
     handleDeleteFurniture,
     handleToggleLockWallElement,
     handleDeleteWallElement,
+    handleUpdateWallElement,
   ]);
 
   const handleCreateRoom = (validRoomData) => {
@@ -921,6 +1038,9 @@ export default function App() {
           autoHideWalls={autoHideWalls}
           cameraCommand={cameraCommand}
           onCameraManualMove={() => setActiveCameraPreset(null)}
+          onRegisterScreenshot={(fn) => {
+            captureScreenshotRef.current = fn;
+          }}
           theme={theme}
           lang={lang}
         />
@@ -936,6 +1056,9 @@ export default function App() {
           onCreateNewSlot={handleCreateNewSlot}
           onRenameSlot={handleRenameSlot}
           onDeleteSlot={handleDeleteSlot}
+          onExportJson={handleExportJson}
+          onImportJson={handleImportJson}
+          onScreenshot={() => captureScreenshotRef.current?.()}
           canUndo={past.length > 0}
           canRedo={future.length > 0}
           onUndo={handleUndo}
