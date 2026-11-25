@@ -46,6 +46,7 @@ export default function ControlPanel({
   onExportJson,
   onImportJson,
   onScreenshot,
+  onLiveMoveWallElement,
   canUndo = false,
   canRedo = false,
   onUndo,
@@ -1407,6 +1408,7 @@ export default function ControlPanel({
             onToggleLock={onToggleLockWallElement}
             onDuplicate={onDuplicateWallElement}
             onDelete={onDeleteWallElement}
+            onLiveMove={onLiveMoveWallElement}
             onRecordHistorySnapshot={onRecordHistorySnapshot}
             subCardClass={subCardClass}
             inputClass={inputClass}

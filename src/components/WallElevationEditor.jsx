@@ -1,6 +1,10 @@
 import React, { useRef, useState } from "react";
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from "lucide-react";
-import { getWallWidthCm, getDoorRectOnFrontWall } from "../wallElements";
+import {
+  getWallWidthCm,
+  getDoorRectOnFrontWall,
+  clampWallElement,
+} from "../wallElements";
 
 export default function WallElevationEditor({
   wallId,
@@ -13,12 +17,14 @@ export default function WallElevationEditor({
   selectedId,
   onSelect,
   onUpdate,
+  onLiveMove,
   onRecordHistorySnapshot,
   isDark,
   t,
 }) {
   const boardRef = useRef(null);
   const [nudgeStep, setNudgeStep] = useState(1);
+  const [dragPreview, setDragPreview] = useState(null);
   const wallWidthCm = getWallWidthCm(wallId, frontWidthCm, sideLengthCm);
 
   const selectedEl = elementsOnWall.find((e) => e.id === selectedId) || null;
@@ -48,21 +54,45 @@ export default function WallElevationEditor({
     const startY = e.clientY;
     const initOffset = el.offsetCm;
     const initElev = el.elevationCm;
+    let latestPos = { offsetCm: initOffset, elevationCm: initElev };
+    let didMove = false;
 
     const onMove = (me) => {
       const dxCm = ((me.clientX - startX) / rect.width) * wallWidthCm;
       const dyCm = ((startY - me.clientY) / rect.height) * roomHeightCm;
       const step = me.altKey ? 1 : 5;
 
-      const nextOffset = Math.round((initOffset + dxCm) / step) * step;
-      const nextElev = Math.round((initElev + dyCm) / step) * step;
+      const rawOffset = Math.round((initOffset + dxCm) / step) * step;
+      const rawElev = Math.round((initElev + dyCm) / step) * step;
 
-      onUpdate(el.id, { offsetCm: nextOffset, elevationCm: nextElev }, false);
+      const clamped = clampWallElement(
+        { ...el, offsetCm: rawOffset, elevationCm: rawElev },
+        frontWidthCm,
+        sideLengthCm,
+        roomHeightCm,
+      );
+
+      if (
+        clamped.offsetCm !== latestPos.offsetCm ||
+        clamped.elevationCm !== latestPos.elevationCm
+      ) {
+        didMove = true;
+        latestPos = {
+          offsetCm: clamped.offsetCm,
+          elevationCm: clamped.elevationCm,
+        };
+        setDragPreview({ id: el.id, ...latestPos });
+        onLiveMove?.(el.id, latestPos.offsetCm, latestPos.elevationCm);
+      }
     };
 
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      setDragPreview(null);
+      if (didMove) {
+        onUpdate(el.id, latestPos, false);
+      }
     };
 
     window.addEventListener("pointermove", onMove);
@@ -133,28 +163,37 @@ export default function WallElevationEditor({
           )}
 
           {elementsOnWall.map((el) => {
-            const isSel = el.id === selectedId;
+            const activeEl =
+              dragPreview && dragPreview.id === el.id
+                ? { ...el, ...dragPreview }
+                : el;
+            const isSel = activeEl.id === selectedId;
+
             return (
               <div
-                key={el.id}
-                onPointerDown={(e) => handlePointerDown(e, el)}
+                key={activeEl.id}
+                onPointerDown={(e) => handlePointerDown(e, activeEl)}
                 style={{
-                  left: `${(el.offsetCm / wallWidthCm) * 100}%`,
-                  bottom: `${(el.elevationCm / roomHeightCm) * 100}%`,
-                  width: `${(el.width / wallWidthCm) * 100}%`,
-                  height: `${(el.height / roomHeightCm) * 100}%`,
-                  backgroundColor: el.type === "window" ? el.color2 : el.color1,
+                  left: `${(activeEl.offsetCm / wallWidthCm) * 100}%`,
+                  bottom: `${(activeEl.elevationCm / roomHeightCm) * 100}%`,
+                  width: `${(activeEl.width / wallWidthCm) * 100}%`,
+                  height: `${(activeEl.height / roomHeightCm) * 100}%`,
+                  backgroundColor:
+                    activeEl.type === "window"
+                      ? activeEl.color2
+                      : activeEl.color1,
                   borderColor: isSel ? "#2563eb" : "#475569",
                 }}
-                title={`${el.width}×${el.height} cm`}
+                title={`${activeEl.width}×${activeEl.height} cm`}
                 className={`absolute flex cursor-grab items-center justify-center rounded-xs border-2 transition-shadow active:cursor-grabbing ${
                   isSel ? "z-10 ring-2 ring-blue-500/40" : "opacity-90"
                 }`}
               >
-                {el.type === "window" && el.windowStyle === "double" && (
-                  <div className="h-full w-0.5 bg-white/80" />
-                )}
-                {el.type === "ac" && (
+                {activeEl.type === "window" &&
+                  activeEl.windowStyle === "double" && (
+                    <div className="h-full w-0.5 bg-white/80" />
+                  )}
+                {activeEl.type === "ac" && (
                   <span className="text-[8px] font-bold tracking-tight text-slate-700">
                     AC
                   </span>

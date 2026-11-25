@@ -26,6 +26,7 @@ export default function WallElementInspector({
   onToggleLock,
   onDuplicate,
   onDelete,
+  onLiveMove,
   onRecordHistorySnapshot,
   subCardClass,
   inputClass,
@@ -225,6 +226,7 @@ export default function WallElementInspector({
           selectedId={element.id}
           onSelect={onSelectElement}
           onUpdate={onUpdate}
+          onLiveMove={onLiveMove}
           onRecordHistorySnapshot={onRecordHistorySnapshot}
           isDark={isDark}
           t={t}

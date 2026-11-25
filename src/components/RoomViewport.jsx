@@ -10,7 +10,11 @@ import {
   getFurnitureWorldAABB,
   checkFurnitureConflicts,
 } from "../utils/furnitureGeometry";
-import { buildWallElementGroup, getWallWidthCm } from "../wallElements";
+import {
+  buildWallElementGroup,
+  getWallWidthCm,
+  checkWallElementConflicts,
+} from "../wallElements";
 import { TRANSLATIONS } from "../utils/i18n";
 
 function remapInnerFaceUV(geometry, u0, u1, v0, v1) {
@@ -111,6 +115,7 @@ export default function RoomViewport({
   cameraCommand,
   onCameraManualMove,
   onRegisterScreenshot,
+  onRegisterLiveWallElementMove,
   theme = "light",
   lang = "id",
 }) {
@@ -132,6 +137,7 @@ export default function RoomViewport({
   const hemiLightRef = useRef(null);
   const wallGroupsRef = useRef({});
   const wallElementGroupsRef = useRef({});
+  const wallElementMeshMapRef = useRef(new Map());
 
   const autoHideRef = useRef(autoHideWalls);
   const viewModeRef = useRef(viewMode);
@@ -143,10 +149,22 @@ export default function RoomViewport({
   const onDragEndRef = useRef(onFurnitureDragEnd);
   const onMoveFurnRef = useRef(onMoveFurniture);
 
-  const latestDataRef = useRef({ isRoomCreated, room, door, furnitures });
+  const latestDataRef = useRef({
+    isRoomCreated,
+    room,
+    door,
+    furnitures,
+    wallElements,
+  });
   useEffect(() => {
-    latestDataRef.current = { isRoomCreated, room, door, furnitures };
-  }, [isRoomCreated, room, door, furnitures]);
+    latestDataRef.current = {
+      isRoomCreated,
+      room,
+      door,
+      furnitures,
+      wallElements,
+    };
+  }, [isRoomCreated, room, door, furnitures, wallElements]);
 
   useEffect(() => {
     autoHideRef.current = autoHideWalls;
@@ -205,10 +223,7 @@ export default function RoomViewport({
 
     activeCameraRef.current = perspCamera;
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      preserveDrawingBuffer: true,
-    });
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -915,8 +930,12 @@ export default function RoomViewport({
     Object.values(wallElGroups).forEach((container) => {
       disposeGroupChildren(container);
     });
+    const nextMeshMap = new Map();
 
-    if (!isRoomCreated) return;
+    if (!isRoomCreated) {
+      wallElementMeshMapRef.current = nextMeshMap;
+      return;
+    }
 
     (wallElements || []).forEach((item) => {
       const container = wallElGroups[item.wall];
@@ -931,7 +950,10 @@ export default function RoomViewport({
         hasConflict,
       });
       container.add(meshGroup);
+      nextMeshMap.set(item.id, meshGroup);
     });
+
+    wallElementMeshMapRef.current = nextMeshMap;
   }, [
     isRoomCreated,
     room,
@@ -1036,6 +1058,41 @@ export default function RoomViewport({
       link.click();
     });
   }, [onRegisterScreenshot]);
+
+  useEffect(() => {
+    if (!onRegisterLiveWallElementMove) return;
+    onRegisterLiveWallElementMove((id, offsetCm, elevationCm) => {
+      const { room: r, door: dObj, wallElements: list } = latestDataRef.current;
+      const el = (list || []).find((item) => item.id === id);
+      const meshGroup = wallElementMeshMapRef.current.get(id);
+      if (!el || !meshGroup) return;
+
+      const wallWidthCm = getWallWidthCm(el.wall, r.width, r.length);
+      const wallW = wallWidthCm / 100;
+      const w = el.width / 100;
+      const h = el.height / 100;
+      const localX = -wallW / 2 + offsetCm / 100 + w / 2;
+      const localY = elevationCm / 100 + h / 2;
+      meshGroup.position.set(localX, localY, 0);
+
+      const candidate = { ...el, offsetCm, elevationCm };
+      const conflictRes = checkWallElementConflicts(
+        candidate,
+        list,
+        r.width,
+        r.length,
+        r.height,
+        dObj,
+      );
+      const hasConflict = conflictRes.hasOverlap || conflictRes.hasDoorBlock;
+      const outlineColor = hasConflict ? "#ef4444" : "#2563eb";
+      meshGroup.traverse((child) => {
+        if (child.isLine && child.material?.color) {
+          child.material.color.set(outlineColor);
+        }
+      });
+    });
+  }, [onRegisterLiveWallElementMove]);
 
   return (
     <div className="relative h-full w-full flex-1 overflow-hidden">

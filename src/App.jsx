@@ -137,6 +137,7 @@ export default function App() {
   }, [wallElements]);
 
   const captureScreenshotRef = useRef(null);
+  const liveWallElementMoveRef = useRef(null);
 
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [viewMode, setViewMode] = useState("3d");
@@ -1081,6 +1082,9 @@ export default function App() {
           onRegisterScreenshot={(fn) => {
             captureScreenshotRef.current = fn;
           }}
+          onRegisterLiveWallElementMove={(fn) => {
+            liveWallElementMoveRef.current = fn;
+          }}
           theme={theme}
           lang={lang}
         />
@@ -1099,6 +1103,9 @@ export default function App() {
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
           onScreenshot={() => captureScreenshotRef.current?.()}
+          onLiveMoveWallElement={(id, offsetCm, elevationCm) => {
+            liveWallElementMoveRef.current?.(id, offsetCm, elevationCm);
+          }}
           canUndo={past.length > 0}
           canRedo={future.length > 0}
           onUndo={handleUndo}
