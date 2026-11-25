@@ -1,8 +1,12 @@
 import * as THREE from "three";
-import { addPart } from "./helpers";
+import { createRoundedBoxGeometry, addPart } from "./helpers";
+
+const sharedFootMat = new THREE.MeshStandardMaterial({
+  color: "#18181B",
+  roughness: 0.65,
+});
 
 function evalBeanbagPoint(t, angle, W, H, D) {
-  // Profil teardrop dari bawah (t=0) ke puncak (t=1)
   const profileR = [
     [0.0, 0.0],
     [0.41, 0.0],
@@ -27,10 +31,8 @@ function evalBeanbagPoint(t, angle, W, H, D) {
   let vx = Math.sin(angle) * r;
   let vz = Math.cos(angle) * r;
 
-  // Condongkan sandaran ke belakang (-Z)
   vz -= Math.pow(vy, 1.65) * 0.22;
 
-  // Lekukan dudukan empuk di bagian depan (+Z)
   if (vz > 0.05 && vy > 0.22 && vy < 0.72) {
     const seatFactor = Math.sin(((vy - 0.22) / 0.5) * Math.PI) * (vz / 0.5);
     vy -= seatFactor * 0.11;
@@ -95,11 +97,10 @@ export const sofaModule = {
     };
   },
 
-  buildMesh(group, item, { matPrimary, matSecondary }, { W, D }) {
-    const H = (item.height || 76) / 100;
+  buildMesh(group, item, { matPrimary, matSecondary }, { W, D, H: dimH }) {
+    const H = dimH || (item.height || 76) / 100;
 
     if (item.sofaStyle === "beanbag") {
-      // 1. Badan Utama Teardrop Lounger
       const radialSegs = 40;
       const heightSteps = 24;
       const latheProfile = [];
@@ -121,13 +122,11 @@ export const sofaModule = {
       bodyGeo.computeVertexNormals();
       addPart(group, bodyGeo, matPrimary, 0, 0, 0);
 
-      // 2. Lis Piping Bawah (Welting Perimeter)
       const basePiping = new THREE.TorusGeometry(0.455, 0.011, 10, 40);
       basePiping.rotateX(Math.PI / 2);
       basePiping.scale(W, 1, D);
       addPart(group, basePiping, matSecondary, 0, H * 0.045, 0);
 
-      // 3. 6 Garis Jahitan Vertikal Antar Panel Kain
       const panelCount = 6;
       for (let p = 0; p < panelCount; p++) {
         const angle = (p / panelCount) * Math.PI * 2 + Math.PI / 6;
@@ -142,7 +141,6 @@ export const sofaModule = {
         addPart(group, seamGeo, matSecondary, 0, 0, 0, false);
       }
 
-      // 4. Kancing Puncak & Tali Pegangan (Carry Handle)
       const apexZ = -0.22 * D;
       addPart(
         group,
@@ -167,99 +165,161 @@ export const sofaModule = {
       return;
     }
 
-    // --- SOFA MINIMALIS ---
-    const legH = Math.min(0.08, H * 0.12);
+    // --- SOFA MINIMALIS (TAILORED & PLUSH) ---
+    const legH = Math.min(0.11, H * 0.15);
     const armW = Math.min(0.14, W * 0.14);
-    const backD = Math.min(0.16, D * 0.24);
-    const seatH = Math.max(0.16, (H - legH) * 0.42);
-    const armH = Math.max(seatH + 0.1, (H - legH) * 0.68);
+    const backFrameD = Math.min(0.13, D * 0.19);
+    const seatH = Math.max(0.18, (H - legH) * 0.44);
+    const armH = Math.max(seatH + 0.08, (H - legH) * 0.66);
     const backH = Math.max(seatH + 0.18, H - legH);
 
-    const legR = 0.022;
-    const lx = Math.max(0.05, W / 2 - 0.06);
-    const lz = Math.max(0.05, D / 2 - 0.06);
+    // 1. 4 Kaki Tapered Miring (Splayed Legs) + Sepatu Karet
+    const legGeo = new THREE.CylinderGeometry(0.022, 0.014, legH, 14);
+    const padGeo = new THREE.CylinderGeometry(0.015, 0.016, 0.008, 12);
+    const lx = Math.max(0.05, W / 2 - 0.065);
+    const lz = Math.max(0.05, D / 2 - 0.065);
     [
-      [-lx, -lz],
-      [lx, -lz],
-      [-lx, lz],
-      [lx, lz],
-    ].forEach(([px, pz]) => {
+      [-1, -1],
+      [1, -1],
+      [-1, 1],
+      [1, 1],
+    ].forEach(([sx, sz]) => {
+      const legMesh = addPart(
+        group,
+        legGeo,
+        matSecondary,
+        sx * lx,
+        legH / 2,
+        sz * lz,
+      );
+      legMesh.rotation.z = -sx * 0.08;
+      legMesh.rotation.x = sz * 0.08;
       addPart(
         group,
-        new THREE.CylinderGeometry(legR, legR * 0.8, legH, 12),
-        matSecondary,
-        px,
-        legH / 2,
-        pz,
+        padGeo,
+        sharedFootMat,
+        sx * (lx + 0.004),
+        0.004,
+        sz * (lz + 0.004),
+        false,
       );
     });
 
-    const baseThick = seatH * 0.45;
+    // 2. Base Plinth Rail (Rangka Bawah Sofa)
+    const baseThick = Math.max(0.06, seatH * 0.44);
+    const baseD = Math.max(0.2, D - 0.02);
     addPart(
       group,
-      new THREE.BoxGeometry(W, baseThick, D),
+      createRoundedBoxGeometry(W - 0.01, baseThick, baseD, 0.025, 0.008, 0.008),
       matPrimary,
       0,
       legH + baseThick / 2,
-      0,
+      -0.005,
     );
 
-    addPart(
-      group,
-      new THREE.BoxGeometry(armW, armH, D),
-      matPrimary,
-      -W / 2 + armW / 2,
-      legH + armH / 2,
-      0,
-    );
-    addPart(
-      group,
-      new THREE.BoxGeometry(armW, armH, D),
-      matPrimary,
-      W / 2 - armW / 2,
-      legH + armH / 2,
-      0,
-    );
-
+    // 3. Sandaran Belakang Struktural (Miring sedikit ke belakang)
     const innerW = Math.max(0.2, W - armW * 2);
-    addPart(
+    const backFrameMesh = addPart(
       group,
-      new THREE.BoxGeometry(innerW, backH, backD),
+      createRoundedBoxGeometry(
+        innerW + 0.01,
+        backH,
+        backFrameD,
+        0.03,
+        0.01,
+        0.01,
+      ),
       matPrimary,
       0,
       legH + backH / 2,
-      -D / 2 + backD / 2,
+      -D / 2 + backFrameD / 2 + 0.012,
+    );
+    backFrameMesh.rotation.x = -0.07;
+
+    // 4. Armrests Kiri & Kanan (Rounded Top Profile)
+    const armGeo = createRoundedBoxGeometry(
+      armW,
+      armH,
+      D - 0.01,
+      0.045,
+      0.014,
+      0.014,
+    );
+    addPart(group, armGeo, matPrimary, -W / 2 + armW / 2, legH + armH / 2, 0);
+    addPart(group, armGeo, matPrimary, W / 2 - armW / 2, legH + armH / 2, 0);
+
+    // 5. Bantalan Dudukan Empuk (1, 2, atau 3 segmen sesuai lebar)
+    const cushionCount = W >= 1.9 ? 3 : W >= 1.05 ? 2 : 1;
+    const cushionGap = 0.014;
+    const cushW = (innerW - cushionGap * (cushionCount - 1)) / cushionCount;
+    const cushD = Math.max(0.18, D - backFrameD + 0.015);
+    const cushH = Math.max(0.07, seatH - baseThick + 0.012);
+    const cushY = legH + baseThick + cushH / 2 - 0.004;
+    const cushZ = backFrameD / 2 + 0.012;
+
+    const seatCushGeo = createRoundedBoxGeometry(
+      cushW,
+      cushH,
+      cushD,
+      0.055,
+      0.02,
+      0.02,
     );
 
-    const cushD = Math.max(0.15, D - backD - 0.01);
-    const cushH = seatH - baseThick;
-    const cushZ = backD / 2;
-    const halfCushW = innerW / 2 - 0.006;
+    for (let i = 0; i < cushionCount; i++) {
+      const cx = -innerW / 2 + cushW / 2 + i * (cushW + cushionGap);
+      addPart(group, seatCushGeo, matPrimary, cx, cushY, cushZ);
+    }
 
-    [-1, 1].forEach((dir) => {
-      addPart(
+    // 6. Bantalan Punggung Empuk (Back Cushions)
+    const backCushH = Math.max(0.16, (backH - seatH) * 0.94);
+    const backCushD = 0.115;
+    const backCushY = legH + seatH + backCushH * 0.48;
+    const backCushZ = -D / 2 + backFrameD + backCushD * 0.45 + 0.012;
+    const backCushGeo = createRoundedBoxGeometry(
+      cushW,
+      backCushH,
+      backCushD,
+      0.055,
+      0.02,
+      0.02,
+    );
+
+    for (let i = 0; i < cushionCount; i++) {
+      const cx = -innerW / 2 + cushW / 2 + i * (cushW + cushionGap);
+      const bcMesh = addPart(
         group,
-        new THREE.BoxGeometry(halfCushW, cushH, cushD),
+        backCushGeo,
         matPrimary,
-        dir * (innerW / 4),
-        legH + baseThick + cushH / 2,
-        cushZ,
+        cx,
+        backCushY,
+        backCushZ,
       );
-    });
+      bcMesh.rotation.x = -0.14;
+    }
 
-    const pillowW = Math.min(0.32, innerW * 0.28);
-    const pillowH = Math.min(0.3, (backH - seatH) * 0.78);
-    const pillowD = 0.09;
-    if (innerW >= 0.7) {
+    // 7. Bantal Sudut (Throw Pillows) dengan sudut santai
+    if (innerW >= 0.72) {
+      const pillowW = Math.min(0.32, innerW * 0.26);
+      const pillowH = Math.min(0.28, (backH - seatH) * 0.76);
+      const pillowD = 0.095;
+      const pillowGeo = createRoundedBoxGeometry(
+        pillowW,
+        pillowH,
+        pillowD,
+        0.055,
+        0.022,
+        0.022,
+      );
+
       [-1, 1].forEach((dir) => {
-        addPart(
-          group,
-          new THREE.BoxGeometry(pillowW, pillowH, pillowD),
-          matSecondary,
-          dir * (innerW / 2 - pillowW / 2 - 0.03),
-          legH + seatH + pillowH / 2 - 0.02,
-          -D / 2 + backD + pillowD / 2 + 0.01,
-        );
+        const px = dir * (innerW / 2 - pillowW * 0.48);
+        const py = legH + seatH + pillowH * 0.45;
+        const pz = backCushZ + backCushD * 0.55 + 0.02;
+        const pMesh = addPart(group, pillowGeo, matSecondary, px, py, pz);
+        pMesh.rotation.x = -0.22;
+        pMesh.rotation.y = -dir * 0.28;
+        pMesh.rotation.z = dir * 0.12;
       });
     }
   },
