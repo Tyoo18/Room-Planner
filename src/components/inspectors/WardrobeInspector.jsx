@@ -1,8 +1,115 @@
 import React from "react";
 
 export default function WardrobeInspector({ item, onUpdate, isDark, t }) {
+  const activeStyle = item.wardrobeStyle || "wood";
+
+  const getTabClass = (isActive) =>
+    `rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+      isActive
+        ? isDark
+          ? "border-zinc-100 bg-zinc-100 text-zinc-900"
+          : "border-zinc-900 bg-zinc-900 text-white"
+        : isDark
+          ? "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+          : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+    }`;
+
   return (
     <div className="space-y-2.5">
+      {/* Pilih Bahan / Gaya: Lemari Kayu vs Loker Besi */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {[
+          {
+            id: "wood",
+            label: t.wardrobeWood || "Lemari Kayu",
+            patch: {
+              wardrobeStyle: "wood",
+              color1: "#E2E8F0",
+              color2: "#94A3B8",
+            },
+          },
+          {
+            id: "locker",
+            label: t.wardrobeLocker || "Loker Besi",
+            patch: {
+              wardrobeStyle: "locker",
+              wardrobeDoorType: "swing",
+              color1: "#4D6B53",
+              color2: "#5F7F66",
+            },
+          },
+        ].map((st) => (
+          <button
+            key={st.id}
+            type="button"
+            onClick={() => onUpdate(item.id, st.patch)}
+            className={getTabClass(activeStyle === st.id)}
+          >
+            {st.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Preset Cepat Khusus Loker Besi */}
+      {activeStyle === "locker" && (
+        <div>
+          <span className="mb-1 block text-[10px] font-semibold text-zinc-500">
+            {t.lockerPresetLabel || "Preset Ukuran Loker"}
+          </span>
+          <div className="grid grid-cols-3 gap-1">
+            {[
+              {
+                label: "Tinggi 1P",
+                patch: {
+                  wardrobeLayout: "vertical",
+                  doorCount: 1,
+                  width: 50,
+                  depth: 45,
+                  height: 175,
+                },
+              },
+              {
+                label: "Nakas 72cm",
+                patch: {
+                  wardrobeLayout: "vertical",
+                  doorCount: 1,
+                  width: 45,
+                  depth: 42,
+                  height: 72,
+                  color1: "#D97706",
+                  color2: "#EAB308",
+                },
+              },
+              {
+                label: "Sekolah 2×3",
+                patch: {
+                  wardrobeLayout: "grid",
+                  wardrobeCols: 2,
+                  wardrobeRows: 3,
+                  width: 80,
+                  depth: 45,
+                  height: 180,
+                },
+              },
+            ].map((pre) => (
+              <button
+                key={pre.label}
+                type="button"
+                onClick={() => onUpdate(item.id, pre.patch)}
+                className={`rounded-md border px-1.5 py-1 text-[10px] font-semibold transition ${
+                  isDark
+                    ? "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                    : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                }`}
+              >
+                {pre.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Susunan: Vertikal vs Grid */}
       <div>
         <span className="mb-1 block text-[11px] text-zinc-500">
           {t.wardrobeLayoutLabel}
@@ -16,15 +123,9 @@ export default function WardrobeInspector({ item, onUpdate, isDark, t }) {
               key={lay.id}
               type="button"
               onClick={() => onUpdate(item.id, { wardrobeLayout: lay.id })}
-              className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
-                (item.wardrobeLayout || "vertical") === lay.id
-                  ? isDark
-                    ? "border-zinc-100 bg-zinc-100 text-zinc-900"
-                    : "border-zinc-900 bg-zinc-900 text-white"
-                  : isDark
-                    ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                    : "border-zinc-300 bg-white text-zinc-700"
-              }`}
+              className={getTabClass(
+                (item.wardrobeLayout || "vertical") === lay.id,
+              )}
             >
               {lay.label}
             </button>
@@ -32,6 +133,7 @@ export default function WardrobeInspector({ item, onUpdate, isDark, t }) {
         </div>
       </div>
 
+      {/* Kustom Jumlah Pintu / Kolom & Baris */}
       {(item.wardrobeLayout || "vertical") === "vertical" ? (
         <div className="flex items-center justify-between">
           <span className="text-[11px] text-zinc-500">{t.doorCountLabel}</span>
@@ -106,6 +208,7 @@ export default function WardrobeInspector({ item, onUpdate, isDark, t }) {
         </div>
       )}
 
+      {/* Mekanisme Pintu */}
       <div className="grid grid-cols-2 gap-1.5">
         {[
           { id: "swing", label: t.wardrobeSwing },
