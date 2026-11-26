@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
+import "./App.css";
 import RoomViewport from "./components/RoomViewport";
 import ControlPanel from "./components/ControlPanel";
 import FurnitureCatalog from "./components/FurnitureCatalog";
@@ -19,6 +20,7 @@ import {
   checkWallElementConflicts,
 } from "./wallElements";
 import { TRANSLATIONS } from "./utils/i18n";
+import { Boxes, Layers3, SlidersHorizontal, X } from "lucide-react";
 
 const STORAGE_KEY = "mrp_layouts_v1";
 const MAX_HISTORY = 40;
@@ -91,6 +93,7 @@ export default function App() {
   );
   const [leftPanelWidth, setLeftPanelWidth] = useState(276);
   const [panelWidth, setPanelWidth] = useState(356);
+  const [activeMobilePanel, setActiveMobilePanel] = useState("closed");
 
   const initialStore = useMemo(() => loadInitialLayoutStore(lang), []);
   const [slots, setSlots] = useState(initialStore.slots);
@@ -1025,12 +1028,27 @@ export default function App() {
 
   return (
     <main
-      className={`flex h-screen w-screen flex-col overflow-hidden md:flex-row ${
+      className={`mrp-app-shell flex h-[100dvh] w-full flex-col overflow-hidden md:flex-row ${
         theme === "dark" ? "bg-zinc-950" : "bg-zinc-100"
       }`}
     >
-      {/* Panel Kiri: Figma Assets & Layers */}
-      <div className="hidden h-full md:block md:shrink-0">
+      {activeMobilePanel !== "closed" && (
+        <button
+          type="button"
+          className="mrp-mobile-backdrop md:hidden"
+          aria-label="Close active panel"
+          onClick={() => setActiveMobilePanel("closed")}
+        />
+      )}
+
+      {/* Assets & Layers: one instance, repositioned between desktop and mobile. */}
+      <div
+        className={`mrp-mobile-panel mrp-mobile-panel--catalog ${
+          activeMobilePanel === "assets" || activeMobilePanel === "layers"
+            ? "mrp-mobile-panel--open"
+            : "mrp-mobile-panel--closed"
+        } md:relative md:block md:h-full md:shrink-0`}
+      >
         <FurnitureCatalog
           isRoomCreated={isRoomCreated}
           furnitures={furnitures}
@@ -1053,11 +1071,12 @@ export default function App() {
           lang={lang}
           panelWidth={leftPanelWidth}
           setPanelWidth={setLeftPanelWidth}
+          mobileActiveTab={activeMobilePanel}
         />
       </div>
 
-      {/* Tengah: Viewport 3D & 2D Denah */}
-      <div className="h-[52vh] min-h-0 w-full min-w-0 overflow-hidden md:h-full md:flex-1">
+      {/* Main 3D / 2D workspace */}
+      <div className="mrp-viewport-shell relative min-h-0 min-w-0 flex-1 overflow-hidden">
         <RoomViewport
           isRoomCreated={isRoomCreated}
           room={computedRoomDimensions}
@@ -1090,8 +1109,14 @@ export default function App() {
         />
       </div>
 
-      {/* Panel Kanan: Template Slot, Undo/Redo & Inspector */}
-      <div className="h-[48vh] min-h-0 w-full md:h-full md:shrink-0 md:w-auto">
+      {/* Room settings: same instance on desktop and mobile. */}
+      <div
+        className={`mrp-mobile-panel mrp-mobile-panel--settings ${
+          activeMobilePanel === "room"
+            ? "mrp-mobile-panel--open"
+            : "mrp-mobile-panel--closed"
+        } md:relative md:block md:h-full md:shrink-0 md:w-auto`}
+      >
         <ControlPanel
           slots={slots}
           activeSlotId={activeSlotId}
@@ -1164,6 +1189,45 @@ export default function App() {
           setPanelWidth={setPanelWidth}
         />
       </div>
+
+      {/* Mobile contextual navigation */}
+      <nav className="mrp-mobile-nav md:hidden" aria-label="Workspace panels">
+        <button
+          type="button"
+          className={activeMobilePanel === "assets" ? "is-active" : ""}
+          aria-pressed={activeMobilePanel === "assets"}
+          onClick={() => setActiveMobilePanel((current) => current === "assets" ? "closed" : "assets")}
+        >
+          <Boxes aria-hidden="true" />
+          <span>Assets</span>
+        </button>
+        <button
+          type="button"
+          className={activeMobilePanel === "layers" ? "is-active" : ""}
+          aria-pressed={activeMobilePanel === "layers"}
+          onClick={() => setActiveMobilePanel((current) => current === "layers" ? "closed" : "layers")}
+        >
+          <Layers3 aria-hidden="true" />
+          <span>Layers</span>
+        </button>
+        <button
+          type="button"
+          className={activeMobilePanel === "room" ? "is-active" : ""}
+          aria-pressed={activeMobilePanel === "room"}
+          onClick={() => setActiveMobilePanel((current) => current === "room" ? "closed" : "room")}
+        >
+          <SlidersHorizontal aria-hidden="true" />
+          <span>Room</span>
+        </button>
+        <button
+          type="button"
+          className="mrp-mobile-nav__close"
+          aria-label="Close panel"
+          onClick={() => setActiveMobilePanel("closed")}
+        >
+          <X aria-hidden="true" />
+        </button>
+      </nav>
     </main>
   );
 }

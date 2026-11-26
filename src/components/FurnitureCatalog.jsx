@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Search,
   Lock,
@@ -53,11 +53,18 @@ export default function FurnitureCatalog({
   lang = "id",
   panelWidth = 276,
   setPanelWidth,
+  mobileActiveTab = "closed",
 }) {
   const t = TRANSLATIONS[lang] || TRANSLATIONS.id;
   const isDark = theme === "dark";
 
   const [activeTab, setActiveTab] = useState("assets");
+
+  useEffect(() => {
+    if (mobileActiveTab === "assets" || mobileActiveTab === "layers") {
+      setActiveTab(mobileActiveTab);
+    }
+  }, [mobileActiveTab]);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Accordion Assets: default hanya bagian paling atas ("sleep") yang kebuka

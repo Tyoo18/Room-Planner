@@ -472,13 +472,15 @@ export default function ControlPanel({
   const doorWidthPct =
     frontWidthCm > 0 ? Math.min(100, (door.width / frontWidthCm) * 100) : 25;
 
+  // Primary sections use editorial separation instead of repeating bordered cards.
   const cardClass = isDark
-    ? "rounded-xl border border-zinc-800 bg-zinc-900 p-3.5 shadow-xs"
-    : "rounded-xl border border-zinc-300/90 bg-white p-3.5 shadow-xs";
+    ? "border-b border-zinc-800/80 pb-4 last:border-b-0"
+    : "border-b border-zinc-200 pb-4 last:border-b-0";
 
+  // Nested controls retain a quiet surface, but no longer compete with the section.
   const subCardClass = isDark
-    ? "rounded-xl border border-zinc-800 bg-zinc-950/70 p-3"
-    : "rounded-xl border border-zinc-200 bg-zinc-100/80 p-3";
+    ? "rounded-lg border border-zinc-800/70 bg-zinc-900/35 p-3"
+    : "rounded-lg border border-zinc-200/80 bg-zinc-50/70 p-3";
 
   const inputClass = isDark
     ? "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs font-semibold text-zinc-100 shadow-xs placeholder:font-normal placeholder:text-zinc-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
@@ -503,7 +505,7 @@ export default function ControlPanel({
   return (
     <aside
       style={{ "--panel-w": `${panelWidth}px` }}
-      className={`relative flex h-full w-full flex-col border-l transition-colors md:w-(--panel-w) ${
+      className={`mrp-control-panel relative flex h-full w-full flex-col border-l transition-colors md:w-(--panel-w) ${
         isDark
           ? "border-zinc-800 bg-zinc-950 text-zinc-100"
           : "border-zinc-300 bg-zinc-50/70 text-zinc-900"
@@ -633,7 +635,7 @@ export default function ControlPanel({
 
       {/* KONTEN SCROLLABLE */}
       <div
-        className={`flex-1 space-y-3.5 overflow-y-auto p-3.5 ${
+        className={`mrp-control-panel__content flex-1 space-y-5 overflow-y-auto px-4 py-4 ${
           isDark ? "dark-scroll" : "light-scroll"
         }`}
       >

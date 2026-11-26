@@ -1,48 +1,120 @@
 @import "tailwindcss";
 
-/* Custom Scrollbar untuk Light & Dark Mode */
-.light-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --mrp-accent: #3b82f6;
+  --mrp-accent-strong: #2563eb;
+  --mrp-radius-sm: 8px;
+  --mrp-radius-md: 12px;
+  --mrp-radius-lg: 16px;
+  --mrp-panel-dark: #17191d;
+  --mrp-panel-dark-raised: #1e2127;
+  --mrp-border-dark: rgba(255, 255, 255, 0.075);
+  --mrp-text-dark: #f4f5f7;
+  --mrp-muted-dark: #9299a5;
 }
 
-.light-scroll::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; }
+body { overflow: hidden; }
+button, input, select, textarea { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--mrp-accent);
+  outline-offset: 2px;
 }
 
-.light-scroll::-webkit-scrollbar-track {
-  background: transparent;
+.light-scroll, .dark-scroll { scrollbar-width: thin; scrollbar-gutter: stable; }
+.light-scroll { scrollbar-color: #cbd5e1 transparent; }
+.dark-scroll { scrollbar-color: #424854 transparent; }
+.light-scroll::-webkit-scrollbar, .dark-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.light-scroll::-webkit-scrollbar-track, .dark-scroll::-webkit-scrollbar-track { background: transparent; }
+.light-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+.dark-scroll::-webkit-scrollbar-thumb { background: #424854; border-radius: 999px; }
+
+.mrp-app-shell { isolation: isolate; }
+.mrp-viewport-shell { background: #101216; }
+.mrp-mobile-panel { min-width: 0; }
+.mrp-mobile-nav { display: none; }
+
+@media (max-width: 767px) {
+  .mrp-app-shell { position: relative; height: 100dvh; height: 100svh; }
+  .mrp-viewport-shell { width: 100%; height: 100%; flex: 1 1 auto; padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  .mrp-mobile-backdrop {
+    position: fixed;
+    z-index: 40;
+    inset: 0;
+    border: 0;
+    background: rgba(5, 7, 10, .38);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  .mrp-mobile-panel {
+    position: fixed;
+    z-index: 50;
+    right: 10px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    left: 10px;
+    height: min(72dvh, 620px);
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 18px;
+    background: #17191d;
+    box-shadow: 0 24px 70px rgba(0,0,0,.48);
+    transition: opacity .2s ease, transform .24s cubic-bezier(.2,.75,.25,1), visibility .24s;
+  }
+  .mrp-mobile-panel--closed { visibility: hidden; opacity: 0; pointer-events: none; transform: translateY(18px) scale(.985); }
+  .mrp-mobile-panel--open { visibility: visible; opacity: 1; pointer-events: auto; transform: translateY(0) scale(1); }
+  .mrp-mobile-panel--catalog > aside,
+  .mrp-mobile-panel--settings > aside { width: 100% !important; height: 100%; border: 0 !important; }
+  .mrp-mobile-panel--catalog > aside { border-radius: 18px; }
+  .mrp-mobile-panel--settings > aside { border-radius: 18px; }
+  .mrp-mobile-nav {
+    position: fixed;
+    z-index: 60;
+    right: 12px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    left: 12px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 42px;
+    align-items: center;
+    min-height: 56px;
+    padding: 5px;
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 16px;
+    background: rgba(25,27,32,.94);
+    box-shadow: 0 12px 34px rgba(0,0,0,.35);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+  .mrp-mobile-nav button {
+    display: flex;
+    min-width: 0;
+    height: 44px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    border-radius: 11px;
+    background: transparent;
+    color: #9ca3af;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mrp-mobile-nav button svg { width: 17px; height: 17px; stroke-width: 1.9; }
+  .mrp-mobile-nav button.is-active { background: rgba(59,130,246,.16); color: #75aaff; }
+  .mrp-mobile-nav .mrp-mobile-nav__close { height: 40px; border-left: 1px solid rgba(255,255,255,.08); border-radius: 0 10px 10px 0; }
+  .mrp-mobile-nav .mrp-mobile-nav__close svg { width: 18px; height: 18px; }
 }
 
-.light-scroll::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 9999px;
-}
-
-.light-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
-}
-
-.dark-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #3f3f46 #09090b;
-}
-
-.dark-scroll::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.dark-scroll::-webkit-scrollbar-track {
-  background: #09090b;
-}
-
-.dark-scroll::-webkit-scrollbar-thumb {
-  background-color: #3f3f46;
-  border-radius: 9999px;
-}
-
-.dark-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: #52525b;
+@media (min-width: 768px) {
+  .mrp-mobile-panel--catalog { display: block; }
+  .mrp-mobile-panel--settings { display: block; }
 }
